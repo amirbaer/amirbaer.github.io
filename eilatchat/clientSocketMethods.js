@@ -24,9 +24,13 @@ socket.on('create_or_join_reply', function(reply) {
       "The room has been created with a different password.";
     button_enable();
   } else if (reply.type == 5) {
-    document.getElementById("modalError").innerHTML =
-      "The room does not exist yet, ask Eilat to create it for you (" + global_room_name + ")";
-    button_enable();
+    if (!global_auto_create) {
+        auto_create(global_room_name);
+    } else {
+        document.getElementById("modalError").innerHTML =
+          "The room does not exist yet, ask Eilat to create it for you (" + global_room_name + ")";
+        button_enable();
+    }
   } else if (reply.type == 6) {
     document.getElementById("modalError").innerHTML =
       "The room has been already been created, try joining it?";

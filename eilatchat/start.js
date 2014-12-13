@@ -24,6 +24,7 @@ var global_user_name = "";
 var global_user_id = -1;
 var global_room_name = "";
 var global_room_hash = "";
+var global_auto_create = false;
 var pass_room_hash = "";
 
 // Regex to parse URLs

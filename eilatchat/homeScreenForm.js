@@ -11,6 +11,22 @@ function create() { //Called when clicking the "create" button
   }
 }
 
+// Called when you try to join a room that does not exist
+function auto_create(room) { 
+  // Check if form has valid input
+  //  [if it doesnt, the errors will be shown to user by form_ok() ]
+  if(new_form_ok(room)) {
+
+    global_auto_create = true;
+
+    //create room logic
+    var ct_nickname = sjcl.encrypt(window.password, global_user_name);
+    socket.emit('create_room',
+      {"room":global_room_name, "secret":pass_room_hash, "nick":ct_nickname});
+    // reply will come in a socket.on waiting for server's reply
+  }
+}
+
 function join() { //Callend when clicking the join room button
   if(form_ok()) {
     //join room logic
