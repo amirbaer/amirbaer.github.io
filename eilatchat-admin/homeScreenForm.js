@@ -69,7 +69,7 @@ function new_form_ok(room) { // Fills global vars, returns true or false based o
     nickVal = "annie";
   } else if (room = "eilatchatbro") {
     nickVal = "amir";
-  } else if (room = "eilatchatbro") {
+  } else if (room = "eilatchatboyfriend") {
     nickVal = "dmitri";
   }
 
