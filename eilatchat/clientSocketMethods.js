@@ -10,13 +10,17 @@
 socket.on('create_or_join_reply', function(reply) {
   if (reply.type == 1) {
     close_form();
+    //document.getElementById("transcript").innerHTML += "<div class='rec_message'><span class='other'>" +
+    //  " You have successfully created the chat room " + global_room_name + ".</span></div>";
     document.getElementById("transcript").innerHTML += "<div class='rec_message'><span class='other'>" +
-      " You have successfully created the chat room " + global_room_name + ".</span></div>";
+      " Welcome </span></div>";
     global_user_id = reply.user_info.unique;
   } else if (reply.type == 3) {
     close_form();
+    //document.getElementById("transcript").innerHTML += "<div class='rec_message'><span class='other'>" +
+    //  " You have successfully joined the chat room " + global_room_name + ".</span></div>";
     document.getElementById("transcript").innerHTML += "<div class='rec_message'><span class='other'>" +
-      " You have successfully joined the chat room " + global_room_name + ".</span></div>";
+      " Welcome </span></div>";
     global_user_id = reply.user_info.unique;
     
   } else if (reply.type == 2 || reply.type == 4) {
