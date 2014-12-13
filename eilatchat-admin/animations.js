@@ -110,7 +110,7 @@ function keyTyped() { // called on keyup event from message input text box
 function incrementUnread() {
   if(!hasFocus) {
     unread++;
-    document.title = "(" + unread + ") EilatChat";
+    document.title = "(" + unread + ") EilatChatAdmin";
 
     if(soundNotifications) {
       var snd = new Audio("https://chatstep.com/ding.wav");
@@ -122,6 +122,6 @@ function incrementUnread() {
 
 function clearUnread() {
   unread = 0;
-  document.title = "EilatChat";
+  document.title = "EilatChatAdmin";
 }
 /*END CORE CHAT VISUALS*/
