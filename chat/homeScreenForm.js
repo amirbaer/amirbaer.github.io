@@ -64,7 +64,7 @@ function new_form_ok(room) { // Fills global vars, returns true or false based o
     alert("Unable to connect to ChatStep server on port <https>, sorry.");
 
   //Check if Room name and Nick name are filled
-  var nickVal = "you";
+  var nickVal = "את/ה";
   global_user_name = message = nickVal;
   var roomVal = (room).replace(/^#*/, '');
   global_room_name = roomVal;
@@ -223,10 +223,12 @@ function close_form() {
   document.getElementById("transcript").style.zIndex = 2;
   document.getElementById("transcript").style.opacity = 1;
     if(global_room_name.length > 15) {
-    document.getElementById("userlistTitle").innerHTML = global_room_name;
+    //document.getElementById("userlistTitle").innerHTML = global_room_name;
+    document.getElementById("userlistTitle").innerHTML = "";
   }
   else {
-    document.getElementById("userlistTitle").innerHTML = "Room: " + global_room_name;
+    //document.getElementById("userlistTitle").innerHTML = "Room: " + global_room_name;
+    document.getElementById("userlistTitle").innerHTML = "";
   }
  
   document.getElementById("message").focus();
