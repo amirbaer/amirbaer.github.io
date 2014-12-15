@@ -1,10 +1,10 @@
 try {
-  if(config_devMode) var socket = io.connect("http://"+hostname+":81");
-  else var socket = io.connect("https://"+hostname+":81");
+  if(config_devMode) var socket = io.connect("http://"+hostname);
+  else var socket = io.connect("https://"+hostname);
 }
 catch(err) {
   console.log("io.connect error");
-  alert("Cannot connect to server. It's either down or blocked by your firewall, sorry. Some workplace firewalls block the port Chatstep runs on (port 81).");
+  alert("Cannot connect to server. It's either down or blocked by your firewall, sorry. Some workplace firewalls block the port Chatstep runs on (https).");
 }
 
 /*All globals*/

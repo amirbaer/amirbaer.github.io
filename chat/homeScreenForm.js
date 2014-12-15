@@ -61,7 +61,7 @@ function new_form_ok(room) { // Fills global vars, returns true or false based o
 
   // Check if socket failed to open
   if(!socket.socket.open)
-    alert("Unable to connect to ChatStep server on port 81, sorry.");
+    alert("Unable to connect to ChatStep server on port <https>, sorry.");
 
   //Check if Room name and Nick name are filled
   var nickVal = "you";
@@ -113,7 +113,7 @@ function form_ok() { // Fills global vars, returns true or false based on if for
 
   // Check if socket failed to open
   if(!socket.socket.open)
-    alert("Unable to connect to ChatStep server on port 81, sorry.");
+    alert("Unable to connect to ChatStep server on port <https>, sorry.");
 
   // Reset shadows around text boxes
   document.getElementById("nickname").style.boxShadow = "0px 0px 3px lightBlue";
