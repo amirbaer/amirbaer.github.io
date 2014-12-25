@@ -15,6 +15,9 @@ socket.on('create_or_join_reply', function(reply) {
     document.getElementById("transcript").innerHTML += "<div class='rec_message'><span class='other'>" +
       " Welcome </span></div>";
     global_user_id = reply.user_info.unique;
+
+    alert("יש לרענן את העמוד לאחר השימוש");
+    
   } else if (reply.type == 3) {
     close_form();
     //document.getElementById("transcript").innerHTML += "<div class='rec_message'><span class='other'>" +
@@ -23,6 +26,8 @@ socket.on('create_or_join_reply', function(reply) {
       " Welcome </span></div>";
     global_user_id = reply.user_info.unique;
     
+    alert("יש לרענן את העמוד לאחר השימוש");
+
   } else if (reply.type == 2 || reply.type == 4) {
     document.getElementById("modalError").innerHTML =
       "The room has been created with a different password.";
@@ -82,6 +87,31 @@ socket.on('create_or_join_reply', function(reply) {
     document.getElementById("barholder").appendChild(bottom);
     loopA++;
   }
+
+
+    // Reload when inactive
+    if (window.addEventListener)
+    addEvent = function(ob, type, fn ) {
+      ob.addEventListener(type, fn, false );
+    };
+    else if (document.attachEvent)
+    addEvent = function(ob, type, fn ) {
+      var eProp = type + fn;
+      ob['e'+eProp] = fn;
+      ob[eProp] = function(){ob['e'+eProp]( window.event );};
+      ob.attachEvent( 'on'+type, ob[eProp]);
+    };
+
+    var timer;
+    timerReset = function(timer) {
+       if (timer) clearTimeout(timer); 
+       timer = setTimeout(function() {location.reload(true);},180000);
+    }
+
+    addEvent(window, 'mousedown', timerReset);
+    addEvent(window, 'mousemove', timerReset);
+    addEvent(window, 'keydown', timerReset);
+    timerReset();
 
 
 });

@@ -15,6 +15,9 @@ socket.on('create_or_join_reply', function(reply) {
     document.getElementById("transcript").innerHTML += "<div class='rec_message'><span class='other'>" +
       " Welcome </span></div>";
     global_user_id = reply.user_info.unique;
+
+    alert("יש לרענן את העמוד לאחר השימוש");
+    
   } else if (reply.type == 3) {
     close_form();
     //document.getElementById("transcript").innerHTML += "<div class='rec_message'><span class='other'>" +
@@ -22,6 +25,8 @@ socket.on('create_or_join_reply', function(reply) {
     document.getElementById("transcript").innerHTML += "<div class='rec_message'><span class='other'>" +
       " Welcome </span></div>";
     global_user_id = reply.user_info.unique;
+
+    alert("יש לרענן את העמוד לאחר השימוש");
     
   } else if (reply.type == 2 || reply.type == 4) {
     document.getElementById("modalError").innerHTML =

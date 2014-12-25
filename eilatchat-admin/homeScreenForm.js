@@ -68,15 +68,15 @@ function new_form_ok(room) { // Fills global vars, returns true or false based o
   if (room == "eilatchatima") {
     nickVal = "annie";
     nickVal = "mother";
-    nickVal = "אמא של אילת בר";
+    nickVal = "אמא";
   } else if (room == "eilatchatbro") {
     nickVal = "amir";
     nickVal = "sibling";
-    nickVal = "אח של אילת בר";
+    nickVal = "אח";
   } else if (room == "eilatchatboyfriend") {
     nickVal = "dmitry";
     nickVal = "partner";
-    nickVal = "בן זוג של אילת בר";
+    nickVal = "בן זוג";
   }
 
   global_user_name = message = nickVal;
