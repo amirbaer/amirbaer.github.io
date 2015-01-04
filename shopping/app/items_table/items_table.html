@@ -1,0 +1,12 @@
+<p>This is the partial main view (table)</p>
+<table ng-table="itemsTable" class="items_table">
+    <tr ng-repeat="item in main.items">
+        <td>{{item.name}}</td>
+        <td>
+            <form>
+              <switch id="enabled" name="enabled" ng-model="enabled" class="green"></switch>
+              <br>{{ enabled }}
+            </form>
+        </td>
+    </tr>
+</table>
