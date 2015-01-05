@@ -5,7 +5,7 @@ var app = angular.module('shuppin', [
   'ngRoute',
   'itemsTable',
   'myApp.version',
-  'uiSwitch',
+  'toggle-switch',
 ]);
 
 app.config(['$routeProvider', function($routeProvider) {
@@ -13,7 +13,9 @@ app.config(['$routeProvider', function($routeProvider) {
 }]);
 
 
-app.controller('MainController', function() {
+app.controller('MainController', function($scope) {
+
+        this.switchStatus = {};
 
         this.items = [
             {
@@ -33,5 +35,10 @@ app.controller('MainController', function() {
         this.removeItem = function(item) {
             delete this.items[item];
         }
+
+        this.changeSwitch = function() {
+            alert("amir");
+        }
+
 });
 
