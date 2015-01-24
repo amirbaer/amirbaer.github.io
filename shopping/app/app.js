@@ -15,7 +15,17 @@ app.config(['$routeProvider', function($routeProvider) {
 
 app.controller('MainController', function($scope) {
 
-        this.switchStatus = {};
+        this.newItem = {};
+
+        this.addNewItem = function(item) {
+            this.newItem.status = true;
+            this.items.push(this.newItem);
+            this.newItem = {};
+        }
+
+        this.removeItem = function(item) {
+            delete this.items[item];
+        }
 
         this.items = [
             {
@@ -27,18 +37,6 @@ app.controller('MainController', function($scope) {
                 "status"    :   false,
             },
         ];
-
-        this.addItem = function(item) {
-            this.items[item] = false;
-        }
-
-        this.removeItem = function(item) {
-            delete this.items[item];
-        }
-
-        this.changeSwitch = function() {
-            alert("amir");
-        }
 
 });
 
