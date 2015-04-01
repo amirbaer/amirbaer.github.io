@@ -5,46 +5,26 @@
     <script src="jquery-1.11.2.min.js"></script> 
     <script> 
     $(function(){
-      $("#includedContent").load("screenrc.html"); 
+      $("#screenContent").load("screenrc.html"); 
+      $("#vimContent").load("vimrc.html"); 
     });
     </script> 
   </head> 
 
   <body> 
+
     <h1>screen</h1>
     <pre>
-     <div id="includedContent"></div>
+     <div id="screenContent"></div>
     </pre>
+
+    </p>
+
+    <h1>vim</h1>
+    <pre>
+     <div id="vimContent"></div>
+    </pre>
+
   </body> 
-
-<!--
-<head>
-  <link rel="screen" href="screenrc.html">
-</head>
-
-
-<body>
-    <h1>screen</h1>
-    <pre>
-        <script>
-            var link = document.querySelector('link[rel="screen"]');
-            var content = link.screen;
-
-            document.body.appendChild(content.cloneNode(true));
-        </script>
-    </pre>
-
-<h1>vim</h1>
-
-<pre>
-hardstatus alwayslastline
-hardstatus string "%{gk}[ %{G}%H %{g}][%= %{wk}%?%-Lw%?%{r}(%{W}%n*%f %t%?(%u)%?%{r})%{w}%?%+Lw%?%?%= %{g}][%{B} %d/%m %{W}%c %{g}]"
-vbell off
-startup_message off
-defscrollback 100000
-</pre>
-
-</body>
--->
 
 </html>
