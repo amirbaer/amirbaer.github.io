@@ -1,1 +1,1 @@
-include: ["tikunolam/.screenrc", "tikunolam/.vimrc"]
+include: ["tikunolam/.screenrc", "tikunolam/.vimrc", ".config.yml"]
