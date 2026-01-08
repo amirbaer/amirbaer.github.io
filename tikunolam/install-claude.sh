@@ -13,5 +13,5 @@ if ! command -v node &> /dev/null; then
         brew install node
     fi
 fi
-npm install -g @anthropic-ai/claude-code
+sudo npm install -g @anthropic-ai/claude-code
 echo "=== Done! Run: claude auth login --headless ==="
