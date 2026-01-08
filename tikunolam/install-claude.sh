@@ -14,4 +14,4 @@ if ! command -v node &> /dev/null; then
     fi
 fi
 sudo npm install -g @anthropic-ai/claude-code
-echo "=== Done! Run: claude auth login --headless ==="
+echo "=== Done! Run: claude auth login ==="
