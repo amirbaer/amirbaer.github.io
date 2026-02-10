@@ -32,8 +32,7 @@ if ! command -v node &> /dev/null; then
 fi
 
 echo "=== Installing dotfiles ==="
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cp "$SCRIPT_DIR/.tmux.conf" ~/.tmux.conf
+curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/.tmux.conf -o ~/.tmux.conf
 
 echo "=== Installing Claude Code ==="
 sudo /usr/bin/env npm install -g @anthropic-ai/claude-code
