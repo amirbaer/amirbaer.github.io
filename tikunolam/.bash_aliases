@@ -9,6 +9,9 @@ shopt -s histappend
 export CLICOLOR=1
 export LSCOLORS="Exgxcxdxcxegedabagacad"
 
+__git_branch() { git branch 2>/dev/null | sed -n 's/^\* \(.*\)/ (\1)/p'; }
+export PS1='\[\033[32m\][\[\033[00m\] \u@\h:\[\033[34m\]\w\[\033[33m\]$(__git_branch) \[\033[32m\]]\[\033[00m\] '
+
 alias less="less -R"
 
 alias jq="jq -C"

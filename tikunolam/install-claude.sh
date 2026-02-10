@@ -15,6 +15,7 @@ fi
 
 echo "=== Installing dotfiles ==="
 curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/.tmux.conf -o ~/.tmux.conf
+curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/.bash_aliases -o ~/.bash_aliases
 
 echo "=== Installing Claude Code ==="
 curl -fsSL https://claude.ai/install.sh | bash
