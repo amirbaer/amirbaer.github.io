@@ -3,7 +3,10 @@ set -e
 echo "=== Installing Claude Code ==="
 if ! command -v node &> /dev/null; then
     echo "Installing Node.js..."
-    if [ -f /etc/redhat-release ]; then
+    if [ -f /etc/system-release ] && grep -qi "amazon" /etc/system-release; then
+        curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+        sudo dnf install -y nodejs npm
+    elif [ -f /etc/redhat-release ]; then
         curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
         sudo dnf install -y nodejs
     elif [ -f /etc/debian_version ]; then
@@ -12,6 +15,7 @@ if ! command -v node &> /dev/null; then
     elif [[ "$OSTYPE" == "darwin"* ]]; then
         brew install node
     fi
+    hash -r
 fi
-sudo npm install -g @anthropic-ai/claude-code
+sudo /usr/bin/env npm install -g @anthropic-ai/claude-code
 echo "=== Done! Run: claude auth login ==="
