@@ -27,10 +27,44 @@ fi
 echo "=== Installing dotfiles ==="
 curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/.tmux.conf -o ~/.tmux.conf
 curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/.bash_aliases -o ~/.bash_aliases
+curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/.inputrc -o ~/.inputrc
 
 echo "=== Installing Claude Code ==="
 curl -fsSL https://claude.ai/install.sh | bash
 export PATH="$HOME/.local/bin:$PATH"
+
+echo "=== Setting up Claude Code hooks ==="
+mkdir -p ~/.claude
+if [ -f ~/.claude/settings.json ]; then
+    # Merge hooks into existing settings using python
+    python3 -c "
+import json, sys
+path = sys.argv[1]
+with open(path) as f: s = json.load(f)
+s.setdefault('hooks', {})['Notification'] = [{'matcher': 'idle_prompt', 'hooks': [{'type': 'command', 'command': \"printf '\\\\a'\"}]}]
+with open(path, 'w') as f: json.dump(s, f, indent=2)
+print('Updated', path)
+" ~/.claude/settings.json
+else
+    cat > ~/.claude/settings.json << 'SETTINGS'
+{
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "idle_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '\\a'"
+          }
+        ]
+      }
+    ]
+  }
+}
+SETTINGS
+    echo "Created ~/.claude/settings.json"
+fi
 
 echo "=== Setting up SSH key ==="
 if [ ! -f ~/.ssh/id_ed25519 ]; then
