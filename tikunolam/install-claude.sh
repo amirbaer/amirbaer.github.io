@@ -24,6 +24,17 @@ elif [[ "$OSTYPE" == "darwin"* ]]; then
     brew install python@3.12
 fi
 
+echo "=== Installing Node.js ==="
+if [ -f /etc/system-release ] && grep -qi "amazon" /etc/system-release; then
+    sudo dnf install -y nodejs npm
+elif [ -f /etc/redhat-release ]; then
+    sudo dnf install -y nodejs npm
+elif [ -f /etc/debian_version ]; then
+    sudo apt-get install -y nodejs npm
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+    brew install node
+fi
+
 echo "=== Installing dotfiles ==="
 curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/.tmux.conf -o ~/.tmux.conf
 curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/.bash_aliases -o ~/.bash_aliases
@@ -32,6 +43,9 @@ curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/
 echo "=== Installing Claude Code ==="
 curl -fsSL https://claude.ai/install.sh | bash
 export PATH="$HOME/.local/bin:$PATH"
+
+echo "=== Installing Codex ==="
+npm install -g @openai/codex --prefix "$HOME/.local"
 
 echo "=== Setting up Claude Code hooks ==="
 mkdir -p ~/.claude
@@ -75,4 +89,4 @@ else
     echo "SSH key already exists, skipping."
 fi
 
-echo "=== Done! Run: claude auth login ==="
+echo "=== Done! Run: claude auth login && codex login ==="
