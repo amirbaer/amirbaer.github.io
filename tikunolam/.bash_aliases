@@ -16,5 +16,6 @@ alias less="less -R"
 
 alias jq="jq -C"
 function jctl () { cat $1 | jq | less ; }
+function jctlip () { local tmp=$(mktemp) && sed 's/\x1b\[[0-9;]*m//g' "$1" | command jq . > "$tmp" && mv "$tmp" "$1"; }
 function mem() { ps -eo rss,pid,euser,args:100 --sort %mem | grep -v grep | grep -i $@ | awk '{printf $1/1024 "MB"; $1=""; print }'; }
 
