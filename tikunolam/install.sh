@@ -80,6 +80,10 @@ SETTINGS
     echo "Created ~/.claude/settings.json"
 fi
 
+echo "=== Installing /babysit-pr skill ==="
+mkdir -p ~/.claude/skills/babysit-pr
+curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/skills/babysit-pr/SKILL.md -o ~/.claude/skills/babysit-pr/SKILL.md
+
 echo "=== Setting up SSH key ==="
 if [ ! -f ~/.ssh/id_ed25519 ]; then
     ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""
