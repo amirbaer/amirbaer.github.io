@@ -1,6 +1,9 @@
 export PAGER="less -R"
 export EDITOR="vim"
-  
+
+# Tools (claude, codex, cswap, uv) install into ~/.local/bin
+case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac
+
 export HISTSIZE=10000
 export HISTFILESIZE=10000
 export HISTCONTROL="ignoredups"

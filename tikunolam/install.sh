@@ -70,6 +70,14 @@ export PATH="$HOME/.local/bin:$PATH"
 echo "=== Installing Codex ==="
 npm install -g @openai/codex --prefix "$HOME/.local"
 
+echo "=== Installing cswap (claude-swap) ==="
+# Multi-account switcher for Claude Code; on PyPI, installed via uv.
+if ! command -v uv >/dev/null 2>&1; then
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+uv tool install claude-swap
+
 echo "=== Setting up Claude Code hooks ==="
 mkdir -p ~/.claude
 if [ -f ~/.claude/settings.json ]; then
