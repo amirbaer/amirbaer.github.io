@@ -1,0 +1,31 @@
+# ~/.zsh_aliases — zsh-native equivalents of ~/.bash_aliases
+
+export PAGER="less -R"
+export EDITOR="vim"
+
+# History
+export HISTSIZE=10000
+export SAVEHIST=10000
+export HISTFILE="$HOME/.zsh_history"
+setopt APPEND_HISTORY
+setopt HIST_IGNORE_DUPS
+
+# Colors (BSD/macOS ls via CLICOLOR; GNU/Linux ls via --color)
+export CLICOLOR=1
+export LSCOLORS="Exgxcxdxcxegedabagacad"
+if ls --color=auto >/dev/null 2>&1; then
+    alias ls='ls --color=auto'
+fi
+
+# Prompt with git branch (zsh equivalent of the bash PS1)
+autoload -Uz vcs_info
+zstyle ':vcs_info:git:*' formats ' (%b)'
+precmd() { vcs_info }
+setopt PROMPT_SUBST
+PROMPT='%F{green}[%f %n@%m:%F{blue}%~%F{yellow}${vcs_info_msg_0_}%f %F{green}]%f '
+
+alias less="less -R"
+alias jq="jq -C"
+jctl()   { cat "$1" | jq | less ; }
+jctlip() { local tmp=$(mktemp) && sed 's/\x1b\[[0-9;]*m//g' "$1" | command jq . > "$tmp" && mv "$tmp" "$1"; }
+mem()    { ps -eo rss,pid,euser,args:100 --sort %mem | grep -v grep | grep -i "$@" | awk '{printf $1/1024 "MB"; $1=""; print }'; }

@@ -38,7 +38,30 @@ fi
 echo "=== Installing dotfiles ==="
 curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/.tmux.conf -o ~/.tmux.conf
 curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/.bash_aliases -o ~/.bash_aliases
+curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/.zsh_aliases -o ~/.zsh_aliases
 curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/.inputrc -o ~/.inputrc
+
+echo "=== Wiring up shell startup ==="
+# The aliases files (incl. the prompt) are inert unless the shell's startup
+# file sources them. Detect the login shell and wire up the matching one.
+case "$(basename "${SHELL:-bash}")" in
+    zsh)
+        RC="$HOME/.zshrc"
+        LINE='[ -f ~/.zsh_aliases ] && source ~/.zsh_aliases'
+        ;;
+    *)
+        RC="$HOME/.bashrc"
+        LINE='[ -f ~/.bash_aliases ] && source ~/.bash_aliases'
+        # Login shells (e.g. SSH) read ~/.bash_profile, not ~/.bashrc — chain them.
+        PROFILE="$HOME/.bash_profile"
+        touch "$PROFILE"
+        grep -qF '.bashrc' "$PROFILE" 2>/dev/null \
+            || echo '[ -f ~/.bashrc ] && source ~/.bashrc' >> "$PROFILE"
+        ;;
+esac
+touch "$RC"
+grep -qF "$LINE" "$RC" 2>/dev/null || echo "$LINE" >> "$RC"
+echo "Wired aliases into $RC (restart your shell or: source $RC)"
 
 echo "=== Installing Claude Code ==="
 curl -fsSL https://claude.ai/install.sh | bash
