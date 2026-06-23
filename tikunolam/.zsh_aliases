@@ -13,6 +13,12 @@ export EDITOR="vim"
 bindkey -e
 [[ -o interactive ]] && stty -ixon 2>/dev/null
 
+# Word-motion/kill bindings (zsh equivalents of ~/.inputrc, which zsh ignores).
+bindkey '^W' backward-kill-word
+bindkey '^G' kill-word
+bindkey '^Y' backward-word
+bindkey '^J' forward-word
+
 # History
 export HISTSIZE=10000
 export SAVEHIST=10000
