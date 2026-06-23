@@ -78,6 +78,20 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 uv tool install claude-swap
 
+# Headless macOS: the login Keychain is unusable over SSH, so Claude Code
+# stores its token in ~/.claude/.credentials.json. Stock cswap assumes the
+# Keychain and finds nothing. Patch it to use the file backend when the
+# Keychain is unusable (no-op on GUI Macs; reverted by `cswap --upgrade`, so
+# re-run install.sh after upgrading). See patches/claude-swap-headless-macos.py.
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    echo "=== Patching cswap for headless macOS ==="
+    if curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/patches/claude-swap-headless-macos.py -o /tmp/cswap-headless-patch.py; then
+        python3 /tmp/cswap-headless-patch.py || echo "WARNING: cswap headless patch could not be applied"
+    else
+        echo "WARNING: could not download cswap headless patch"
+    fi
+fi
+
 echo "=== Setting up Claude Code hooks ==="
 mkdir -p ~/.claude
 if [ -f ~/.claude/settings.json ]; then
