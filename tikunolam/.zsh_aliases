@@ -6,6 +6,11 @@ case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$P
 export PAGER="less -R"
 export EDITOR="vim"
 
+# EDITOR=vim makes zsh pick the vi-insert keymap, where ^P/^N self-insert
+# instead of navigating history. Rebind them while keeping vi mode.
+bindkey -M viins '^P' up-line-or-history
+bindkey -M viins '^N' down-line-or-history
+
 # History
 export HISTSIZE=10000
 export SAVEHIST=10000
