@@ -11,6 +11,12 @@ export EDITOR="vim"
 bindkey -M viins '^P' up-line-or-history
 bindkey -M viins '^N' down-line-or-history
 
+# Incremental history search. Ctrl+S is XOFF (flow-control freeze) in most
+# terminals, so disable that or forward-search never reaches zsh.
+bindkey -M viins '^R' history-incremental-search-backward
+bindkey -M viins '^S' history-incremental-search-forward
+[[ -o interactive ]] && stty -ixon 2>/dev/null
+
 # History
 export HISTSIZE=10000
 export SAVEHIST=10000
