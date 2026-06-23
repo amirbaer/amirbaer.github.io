@@ -6,15 +6,11 @@ case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$P
 export PAGER="less -R"
 export EDITOR="vim"
 
-# EDITOR=vim makes zsh pick the vi-insert keymap, where ^P/^N self-insert
-# instead of navigating history. Rebind them while keeping vi mode.
-bindkey -M viins '^P' up-line-or-history
-bindkey -M viins '^N' down-line-or-history
-
-# Incremental history search. Ctrl+S is XOFF (flow-control freeze) in most
-# terminals, so disable that or forward-search never reaches zsh.
-bindkey -M viins '^R' history-incremental-search-backward
-bindkey -M viins '^S' history-incremental-search-forward
+# EDITOR=vim makes zsh default to the vi keymap on the command line, where
+# ^P/^N/^R don't navigate history. Use emacs line editing instead — gives the
+# whole set (^P/^N, ^R, ^A/^E/^K/^W, ...). Only affects the command line, not
+# $EDITOR. Ctrl+S forward-search needs flow control (XOFF) off to reach zsh.
+bindkey -e
 [[ -o interactive ]] && stty -ixon 2>/dev/null
 
 # History
