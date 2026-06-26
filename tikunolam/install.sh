@@ -1,6 +1,42 @@
 #!/bin/bash
 set -e
 
+# macOS: Homebrew silently falls back to compiling packages from SOURCE when the
+# Command Line Tools are outdated (or the macOS version is unsupported). That
+# turns `brew install vim` into a multi-hour LLVM build with almost no output, so
+# the script looks frozen/stuck. Detect it up front and stop with a clear
+# message instead. Set ALLOW_SOURCE_BUILDS=1 to skip this check and proceed.
+check_brew_source_build_risk() {
+    [ -n "$ALLOW_SOURCE_BUILDS" ] && return 0
+    command -v brew >/dev/null 2>&1 || return 0
+
+    local doctor_out
+    doctor_out="$(brew doctor 2>&1 || true)"
+    echo "$doctor_out" | grep -qiE "command line tools|do not provide support|pre-release" || return 0
+
+    echo ""
+    echo "⚠️  WARNING: Homebrew is likely to build packages from SOURCE on this Mac."
+    echo "   Cause: outdated Command Line Tools (or an unsupported macOS version)."
+    echo "   Effect: 'brew install vim' compiles LLVM from source — often 1-3 HOURS,"
+    echo "           with almost no output, so it looks like the script is stuck."
+    echo ""
+    echo "   Recommended fix, then re-run this script:"
+    echo "     sudo rm -rf /Library/Developer/CommandLineTools"
+    echo "     sudo xcode-select --install"
+    echo ""
+    echo "   (To proceed anyway and accept the slow build: ALLOW_SOURCE_BUILDS=1 $0)"
+    echo ""
+
+    local reply=""
+    if [ -e /dev/tty ]; then
+        read -r -p "   Continue with source builds anyway? [y/N] " reply < /dev/tty || reply=""
+    fi
+    case "$reply" in
+        [yY] | [yY][eE][sS]) echo "   Continuing — this may take a long time..." ;;
+        *) echo "   Aborting. Update the Command Line Tools and re-run."; exit 1 ;;
+    esac
+}
+
 echo "=== Installing tools ==="
 if [ -f /etc/system-release ] && grep -qi "amazon" /etc/system-release; then
     sudo dnf install -y git vim tmux
@@ -10,6 +46,7 @@ elif [ -f /etc/debian_version ]; then
     sudo apt-get update
     sudo apt-get install -y git vim tmux
 elif [[ "$OSTYPE" == "darwin"* ]]; then
+    check_brew_source_build_risk
     brew install git vim tmux
 fi
 
