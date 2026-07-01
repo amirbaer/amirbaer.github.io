@@ -78,6 +78,17 @@ curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/
 curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/.zsh_aliases -o ~/.zsh_aliases
 curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/.inputrc -o ~/.inputrc
 
+echo "=== Installing pichefkes tools (claude-sessions, workls) ==="
+# Both live in the separate public repo amirbaer/pichefkes, not this one.
+mkdir -p ~/.local/bin ~/.local/share
+# claude-sessions: standalone stdlib-only Python CLI to list/resume sessions.
+curl -fsSL https://raw.githubusercontent.com/amirbaer/pichefkes/master/claude/claude-sessions.py -o ~/.local/bin/claude-sessions
+chmod +x ~/.local/bin/claude-sessions
+# workclone.sh: shell functions (workls/workcd/workclone). It must run inside
+# the interactive shell (it cd's), so it is sourced from the rc below rather
+# than placed on PATH. The .zsh_aliases/.bash_aliases put ~/.local/bin on PATH.
+curl -fsSL https://raw.githubusercontent.com/amirbaer/pichefkes/master/workclone/workclone.sh -o ~/.local/share/workclone.sh
+
 echo "=== Wiring up shell startup ==="
 # The aliases files (incl. the prompt) are inert unless the shell's startup
 # file sources them. Detect the login shell and wire up the matching one.
@@ -99,6 +110,31 @@ esac
 touch "$RC"
 grep -qF "$LINE" "$RC" 2>/dev/null || echo "$LINE" >> "$RC"
 echo "Wired aliases into $RC (restart your shell or: source $RC)"
+
+# workclone.sh refuses to load unless WORKCLONE_ORG and WORKCLONE_DIR are set,
+# so those exports are written into the rc before the source line. The org has
+# no sensible default, so prompt for it (honoring a pre-set $WORKCLONE_ORG and
+# skipping when there's no terminal); the clones dir defaults to ~/work.
+WORKCLONE_SRC='source ~/.local/share/workclone.sh'
+if grep -qF "$WORKCLONE_SRC" "$RC" 2>/dev/null; then
+    echo "workclone already wired into $RC"
+else
+    WC_ORG="${WORKCLONE_ORG:-}"
+    if [ -z "$WC_ORG" ] && [ -e /dev/tty ]; then
+        read -r -p "workclone: default GitHub org for 'workclone <repo>' (blank to skip): " WC_ORG < /dev/tty || WC_ORG=""
+    fi
+    if [ -n "$WC_ORG" ]; then
+        {
+            echo "export WORKCLONE_ORG=\"\${WORKCLONE_ORG:-$WC_ORG}\""
+            echo 'export WORKCLONE_DIR="${WORKCLONE_DIR:-$HOME/work}"'
+            echo '[ -f ~/.local/share/workclone.sh ] && source ~/.local/share/workclone.sh'
+        } >> "$RC"
+        echo "Wired workclone (workls) into $RC (org: $WC_ORG, dir: \$HOME/work)"
+    else
+        echo "workclone: no org given — skipped rc wiring. Set WORKCLONE_ORG and"
+        echo "WORKCLONE_DIR, then source ~/.local/share/workclone.sh manually."
+    fi
+fi
 
 echo "=== Installing Claude Code ==="
 curl -fsSL https://claude.ai/install.sh | bash
