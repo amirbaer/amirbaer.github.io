@@ -1,6 +1,16 @@
 #!/bin/bash
 set -e
 
+# This script is idempotent: every component is checked and skipped when it is
+# already present. Components that are meant to track upstream (dotfiles,
+# Claude Code, Codex, cswap) are refreshed/upgraded in place instead of skipped.
+
+# Tools installed here land in ~/.local/bin — put it on PATH up front so the
+# "already installed?" checks can see binaries from a previous run.
+export PATH="$HOME/.local/bin:$PATH"
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
 # macOS: Homebrew silently falls back to compiling packages from SOURCE when the
 # Command Line Tools are outdated (or the macOS version is unsupported). That
 # turns `brew install vim` into a multi-hour LLVM build with almost no output, so
@@ -37,42 +47,94 @@ check_brew_source_build_risk() {
     esac
 }
 
-echo "=== Installing tools ==="
+# Detect the package manager once (Amazon Linux and RHEL both use dnf).
 if [ -f /etc/system-release ] && grep -qi "amazon" /etc/system-release; then
-    sudo dnf install -y git vim tmux
+    PLATFORM=dnf
 elif [ -f /etc/redhat-release ]; then
-    sudo dnf install -y git vim tmux
+    PLATFORM=dnf
 elif [ -f /etc/debian_version ]; then
-    sudo apt-get update
-    sudo apt-get install -y git vim tmux
+    PLATFORM=apt
 elif [[ "$OSTYPE" == "darwin"* ]]; then
-    check_brew_source_build_risk
-    brew install git vim tmux
+    PLATFORM=brew
+else
+    PLATFORM=""
+fi
+
+# pkg_install <pkg>... — install via the platform's package manager. The apt
+# index refresh and the brew source-build check each run at most once, and only
+# when something actually needs installing.
+APT_UPDATED=""
+BREW_CHECKED=""
+pkg_install() {
+    case "$PLATFORM" in
+        dnf)
+            sudo dnf install -y "$@"
+            ;;
+        apt)
+            if [ -z "$APT_UPDATED" ]; then
+                sudo apt-get update
+                APT_UPDATED=1
+            fi
+            sudo apt-get install -y "$@"
+            ;;
+        brew)
+            if [ -z "$BREW_CHECKED" ]; then
+                check_brew_source_build_risk
+                BREW_CHECKED=1
+            fi
+            brew install "$@"
+            ;;
+    esac
+}
+
+echo "=== Installing tools ==="
+missing=()
+for tool in git vim tmux; do
+    have "$tool" || missing+=("$tool")
+done
+if [ ${#missing[@]} -eq 0 ]; then
+    echo "git, vim, tmux already installed — skipping"
+else
+    pkg_install "${missing[@]}"
 fi
 
 echo "=== Installing Python ==="
-if [ -f /etc/system-release ] && grep -qi "amazon" /etc/system-release; then
-    sudo dnf install -y python3.12 python3.12-pip
-elif [ -f /etc/redhat-release ]; then
-    sudo dnf install -y python3.12 python3.12-pip
-elif [ -f /etc/debian_version ]; then
-    sudo apt-get install -y python3 python3-pip
-elif [[ "$OSTYPE" == "darwin"* ]]; then
-    brew install python@3.12
-fi
+case "$PLATFORM" in
+    dnf)
+        if have python3.12; then
+            echo "python3.12 already installed — skipping"
+        else
+            pkg_install python3.12 python3.12-pip
+        fi
+        ;;
+    apt)
+        if have python3 && have pip3; then
+            echo "python3 + pip3 already installed — skipping"
+        else
+            pkg_install python3 python3-pip
+        fi
+        ;;
+    brew)
+        if have python3; then
+            echo "python3 already installed — skipping"
+        else
+            pkg_install python@3.12
+        fi
+        ;;
+esac
 
 echo "=== Installing Node.js ==="
-if [ -f /etc/system-release ] && grep -qi "amazon" /etc/system-release; then
-    sudo dnf install -y nodejs npm
-elif [ -f /etc/redhat-release ]; then
-    sudo dnf install -y nodejs npm
-elif [ -f /etc/debian_version ]; then
-    sudo apt-get install -y nodejs npm
-elif [[ "$OSTYPE" == "darwin"* ]]; then
-    brew install node
+if have node && have npm; then
+    echo "node + npm already installed — skipping"
+elif [ "$PLATFORM" = brew ]; then
+    pkg_install node
+else
+    pkg_install nodejs npm
 fi
 
 echo "=== Installing dotfiles ==="
+# Always re-downloaded: overwriting with the latest copy IS the update path,
+# and re-running converges on the same state.
 curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/.tmux.conf -o ~/.tmux.conf
 curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/.bash_aliases -o ~/.bash_aliases
 curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/.zsh_aliases -o ~/.zsh_aliases
@@ -80,6 +142,7 @@ curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/
 
 echo "=== Installing pichefkes tools (claude-sessions, workls) ==="
 # Both live in the separate public repo amirbaer/pichefkes, not this one.
+# Always re-downloaded so re-running the script picks up upstream changes.
 mkdir -p ~/.local/bin ~/.local/share
 # claude-sessions: standalone stdlib-only Python CLI to list/resume sessions.
 curl -fsSL https://raw.githubusercontent.com/amirbaer/pichefkes/master/claude/claude-sessions.py -o ~/.local/bin/claude-sessions
@@ -108,8 +171,12 @@ case "$(basename "${SHELL:-bash}")" in
         ;;
 esac
 touch "$RC"
-grep -qF "$LINE" "$RC" 2>/dev/null || echo "$LINE" >> "$RC"
-echo "Wired aliases into $RC (restart your shell or: source $RC)"
+if grep -qF "$LINE" "$RC" 2>/dev/null; then
+    echo "Aliases already wired into $RC"
+else
+    echo "$LINE" >> "$RC"
+    echo "Wired aliases into $RC (restart your shell or: source $RC)"
+fi
 
 # workclone.sh refuses to load unless WORKCLONE_ORG and WORKCLONE_DIR are set,
 # so those exports are written into the rc before the source line. The org has
@@ -137,25 +204,51 @@ else
 fi
 
 echo "=== Installing Claude Code ==="
-curl -fsSL https://claude.ai/install.sh | bash
-export PATH="$HOME/.local/bin:$PATH"
+if have claude; then
+    echo "Claude Code already installed ($(claude --version 2>/dev/null || echo "version unknown")) — checking for updates"
+    # `claude update` is a fast no-op when current; fall back to the installer
+    # if it fails (e.g. for installs the updater doesn't manage).
+    claude update || curl -fsSL https://claude.ai/install.sh | bash
+else
+    curl -fsSL https://claude.ai/install.sh | bash
+fi
 
 echo "=== Installing Codex ==="
-npm install -g @openai/codex --prefix "$HOME/.local"
+# Skip the (slow) npm install when the installed version already matches the
+# latest on the registry; otherwise install/update to latest.
+codex_installed="$(npm ls -g --prefix "$HOME/.local" @openai/codex --depth=0 2>/dev/null | sed -n 's/.*@openai\/codex@//p' | head -1 || true)"
+codex_latest="$(npm view @openai/codex version 2>/dev/null || true)"
+if [ -z "$codex_installed" ] && have codex; then
+    # Installed by some other means (different npm prefix, brew, ...) — not
+    # managed by this script, so leave it alone rather than double-install.
+    echo "Codex already installed outside ~/.local ($(codex --version 2>/dev/null || echo "version unknown")) — skipping"
+elif [ -n "$codex_installed" ] && [ "$codex_installed" = "$codex_latest" ]; then
+    echo "Codex $codex_installed already up to date — skipping"
+else
+    if [ -n "$codex_installed" ]; then
+        echo "Updating Codex $codex_installed -> ${codex_latest:-latest}"
+    fi
+    npm install -g @openai/codex --prefix "$HOME/.local"
+fi
 
 echo "=== Installing cswap (claude-swap) ==="
 # Multi-account switcher for Claude Code; on PyPI, installed via uv.
-if ! command -v uv >/dev/null 2>&1; then
+if ! have uv; then
     curl -LsSf https://astral.sh/uv/install.sh | sh
-    export PATH="$HOME/.local/bin:$PATH"
 fi
-uv tool install claude-swap
+if uv tool list 2>/dev/null | grep -q '^claude-swap '; then
+    # `uv tool upgrade` is a fast no-op when already at the latest version.
+    uv tool upgrade claude-swap
+else
+    uv tool install claude-swap
+fi
 
 # Headless macOS: the login Keychain is unusable over SSH, so Claude Code
 # stores its token in ~/.claude/.credentials.json. Stock cswap assumes the
 # Keychain and finds nothing. Patch it to use the file backend when the
-# Keychain is unusable (no-op on GUI Macs; reverted by `cswap --upgrade`, so
-# re-run install.sh after upgrading). See patches/claude-swap-headless-macos.py.
+# Keychain is unusable (no-op on GUI Macs; reverted by `cswap --upgrade` and
+# by the `uv tool upgrade` above, so it is reapplied on every run). See
+# patches/claude-swap-headless-macos.py.
 if [[ "$OSTYPE" == "darwin"* ]]; then
     echo "=== Patching cswap for headless macOS ==="
     if curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/patches/claude-swap-headless-macos.py -o /tmp/cswap-headless-patch.py; then
@@ -168,14 +261,19 @@ fi
 echo "=== Setting up Claude Code hooks ==="
 mkdir -p ~/.claude
 if [ -f ~/.claude/settings.json ]; then
-    # Merge hooks into existing settings using python
+    # Merge the hook into existing settings, but only if it isn't already
+    # there — don't clobber a Notification list the user has customized.
     python3 -c "
 import json, sys
 path = sys.argv[1]
 with open(path) as f: s = json.load(f)
-s.setdefault('hooks', {})['Notification'] = [{'matcher': 'idle_prompt', 'hooks': [{'type': 'command', 'command': \"printf '\\\\a'\"}]}]
-with open(path, 'w') as f: json.dump(s, f, indent=2)
-print('Updated', path)
+notifs = s.setdefault('hooks', {}).setdefault('Notification', [])
+if any(isinstance(h, dict) and h.get('matcher') == 'idle_prompt' for h in notifs):
+    print('idle_prompt hook already present in', path, '- skipping')
+else:
+    notifs.append({'matcher': 'idle_prompt', 'hooks': [{'type': 'command', 'command': \"printf '\\\\a'\"}]})
+    with open(path, 'w') as f: json.dump(s, f, indent=2)
+    print('Updated', path)
 " ~/.claude/settings.json
 else
     cat > ~/.claude/settings.json << 'SETTINGS'
@@ -199,6 +297,7 @@ SETTINGS
 fi
 
 echo "=== Installing /babysit-pr skill ==="
+# Always re-downloaded so re-running the script picks up skill updates.
 mkdir -p ~/.claude/skills/babysit-pr
 curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/skills/babysit-pr/SKILL.md -o ~/.claude/skills/babysit-pr/SKILL.md
 
