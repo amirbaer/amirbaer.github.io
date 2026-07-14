@@ -140,6 +140,23 @@ curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/
 curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/.zsh_aliases -o ~/.zsh_aliases
 curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/.inputrc -o ~/.inputrc
 
+echo "=== Installing tmux session persistence (tpm + resurrect + continuum) ==="
+# tmux sessions do not survive a reboot on their own. resurrect saves/restores
+# them and continuum auto-saves + auto-restores (config lives in .tmux.conf as
+# @plugin lines, loaded by TPM at tmux startup; `tmux-start` in the aliases
+# restores after a reboot). Cloned directly rather than via TPM's installer so
+# this works with no tmux server running (e.g. a fresh box); re-running updates
+# each plugin in place.
+for repo in tmux-plugins/tpm tmux-plugins/tmux-resurrect tmux-plugins/tmux-continuum; do
+    dest="$HOME/.tmux/plugins/$(basename "$repo")"
+    if [ -d "$dest/.git" ]; then
+        git -C "$dest" pull --ff-only --quiet || echo "  (could not update $repo — leaving as-is)"
+    else
+        mkdir -p "$(dirname "$dest")"
+        git clone --depth 1 --quiet "https://github.com/$repo.git" "$dest"
+    fi
+done
+
 echo "=== Installing pichefkes tools (claude-sessions, workls) ==="
 # Both live in the separate public repo amirbaer/pichefkes, not this one.
 # Always re-downloaded so re-running the script picks up upstream changes.

@@ -45,3 +45,25 @@ alias jq="jq -C"
 jctl()   { cat "$1" | jq | less ; }
 jctlip() { local tmp=$(mktemp) && sed 's/\x1b\[[0-9;]*m//g' "$1" | command jq . > "$tmp" && mv "$tmp" "$1"; }
 mem()    { ps -eo rss,pid,euser,args:100 --sort %mem | grep -v grep | grep -i "$@" | awk '{printf $1/1024 "MB"; $1=""; print }'; }
+
+# Start tmux and restore the last saved sessions (tmux-resurrect) if the server
+# isn't already running -- e.g. after a reboot. Attaches when done.
+tmux-start() {
+  if tmux has-session 2>/dev/null; then
+    tmux attach "$@"
+    return
+  fi
+  local restore="$HOME/.tmux/plugins/tmux-resurrect/scripts/restore.sh"
+  if [ -x "$restore" ]; then
+    tmux new-session -d -s _boot            # holder keeps the server alive during restore
+    "$restore"
+    sleep 1
+    # drop the holder if real sessions came back
+    if tmux list-sessions 2>/dev/null | grep -qv '^_boot:'; then
+      tmux kill-session -t _boot 2>/dev/null
+    fi
+    tmux attach "$@"
+  else
+    tmux new-session "$@"
+  fi
+}
