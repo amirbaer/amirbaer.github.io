@@ -150,12 +150,45 @@ echo "=== Installing tmux session persistence (tpm + resurrect + continuum) ==="
 for repo in tmux-plugins/tpm tmux-plugins/tmux-resurrect tmux-plugins/tmux-continuum; do
     dest="$HOME/.tmux/plugins/$(basename "$repo")"
     if [ -d "$dest/.git" ]; then
+        # Discard local edits (like the `set -x` silencing below) so the pull
+        # can't fail on a dirty tree — plugins are meant to track upstream.
+        git -C "$dest" checkout --quiet -- . 2>/dev/null || true
         git -C "$dest" pull --ff-only --quiet || echo "  (could not update $repo — leaving as-is)"
     else
         mkdir -p "$(dirname "$dest")"
         git clone --depth 1 --quiet "https://github.com/$repo.git" "$dest"
     fi
 done
+
+# Upstream tmux-continuum ships a stray `set -x` in continuum.tmux (debug
+# leftover committed to their master) that spews shell trace to stderr every
+# time the plugin loads. Comment it out; the checkout above undoes this before
+# each pull, so it is reapplied here on every run.
+CONTINUUM="$HOME/.tmux/plugins/tmux-continuum/continuum.tmux"
+if grep -q '^set -x$' "$CONTINUUM" 2>/dev/null; then
+    sed 's/^set -x$/# set -x  # silenced by tikunolam install.sh/' "$CONTINUUM" > "$CONTINUUM.tmp" \
+        && mv "$CONTINUUM.tmp" "$CONTINUUM"
+fi
+
+# continuum's auto-save is a decoy for detached servers: it rides on status-bar
+# redraws, which only happen while a client is attached, so a server nobody is
+# attached to is NEVER auto-saved (and continuum stamps a fake "last save"
+# timestamp on first load, hiding the gap). tmux-autosave is a save loop that
+# .tmux.conf starts with the server; it saves via tmux-resurrect on a timer
+# regardless of attached clients. Always re-downloaded (tracks upstream).
+mkdir -p ~/.local/bin
+curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/tmux-autosave -o ~/.local/bin/tmux-autosave
+chmod +x ~/.local/bin/tmux-autosave
+
+# Retrofit a server that is already running (it loaded the old config, so it
+# has no autosave loop): start the loop in it and snapshot the sessions now.
+# No-ops when no server is running; the loop itself guards against duplicates.
+if tmux has-session 2>/dev/null; then
+    tmux run-shell -b "$HOME/.local/bin/tmux-autosave" 2>/dev/null || true
+    if "$HOME/.tmux/plugins/tmux-resurrect/scripts/save.sh" quiet >/dev/null 2>&1; then
+        echo "Saved a snapshot of the currently running tmux sessions"
+    fi
+fi
 
 echo "=== Installing pichefkes tools (claude-sessions, workls) ==="
 # Both live in the separate public repo amirbaer/pichefkes, not this one.

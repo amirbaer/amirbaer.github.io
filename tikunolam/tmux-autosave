@@ -1,0 +1,47 @@
+#!/bin/sh
+# tmux-autosave — save tmux sessions via tmux-resurrect on a timer, independent
+# of the status bar.
+#
+# Why this exists: tmux-continuum's auto-save piggybacks on status-bar redraws,
+# which only happen while a client is ATTACHED. A detached server (or one whose
+# clients disconnect) is never saved, so a crash/kill-server loses everything.
+# This loop is started by .tmux.conf via `run-shell -b`, lives as a child of
+# the tmux server, and saves every interval regardless of attached clients.
+# It exits when the server does.
+#
+# Interval comes from @continuum-save-interval (minutes) so one knob controls
+# both mechanisms; 0 disables auto-save, matching continuum's convention.
+
+SAVE="$HOME/.tmux/plugins/tmux-resurrect/scripts/save.sh"
+
+# Single instance per server: the pid is parked in a server-scoped tmux option,
+# which dies with the server, so a config reload doesn't stack a second loop.
+existing="$(tmux show-option -gqv @autosave-pid 2>/dev/null)"
+if [ -n "$existing" ] && kill -0 "$existing" 2>/dev/null; then
+    exit 0
+fi
+tmux set-option -g @autosave-pid "$$" 2>/dev/null || exit 0
+
+interval_min="$(tmux show-option -gqv @continuum-save-interval 2>/dev/null)"
+case "$interval_min" in
+    "" | *[!0-9]*) interval_min=5 ;;
+esac
+[ "$interval_min" -eq 0 ] && exit 0
+
+# Sleep BEFORE the first save: on server start continuum may still be
+# restoring the previous state, and saving immediately would overwrite the
+# last good snapshot with a near-empty one.
+#
+# Each tick re-checks that this process is still the registered saver: an
+# orphan outliving its server (tmux doesn't kill run-shell jobs on exit) sees
+# a dead socket — or a NEW server with fresh options and its own loop — and
+# bows out instead of double-saving. The has-session check keeps a session-less
+# server (exit-empty off) from clobbering the last good snapshot with nothing.
+while :; do
+    sleep "$((interval_min * 60))"
+    [ "$(tmux show-option -gqv @autosave-pid 2>/dev/null)" = "$$" ] || break
+    tmux has-session 2>/dev/null || break
+    [ -x "$SAVE" ] || break
+    "$SAVE" quiet >/dev/null 2>&1 || true
+done
+exit 0
