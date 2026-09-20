@@ -142,11 +142,11 @@ curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/
 
 echo "=== Installing tmux session persistence (tpm + resurrect + continuum) ==="
 # tmux sessions do not survive a reboot on their own. resurrect saves/restores
-# them and continuum auto-saves + auto-restores (config lives in .tmux.conf as
-# @plugin lines, loaded by TPM at tmux startup; `tmux-start` in the aliases
-# restores after a reboot). Cloned directly rather than via TPM's installer so
-# this works with no tmux server running (e.g. a fresh box); re-running updates
-# each plugin in place.
+# them; continuum's auto-restore is off in .tmux.conf because `tmux-start` in
+# the aliases runs the restore itself after a reboot (config lives in .tmux.conf
+# as @plugin lines, loaded by TPM at tmux startup). Cloned directly rather than
+# via TPM's installer so this works with no tmux server running (e.g. a fresh
+# box); re-running updates each plugin in place.
 for repo in tmux-plugins/tpm tmux-plugins/tmux-resurrect tmux-plugins/tmux-continuum; do
     dest="$HOME/.tmux/plugins/$(basename "$repo")"
     if [ -d "$dest/.git" ]; then
@@ -169,6 +169,10 @@ if grep -q '^set -x$' "$CONTINUUM" 2>/dev/null; then
     sed 's/^set -x$/# set -x  # silenced by tikunolam install.sh/' "$CONTINUUM" > "$CONTINUUM.tmp" \
         && mv "$CONTINUUM.tmp" "$CONTINUUM"
 fi
+# The mv above replaces the file with a non-executable temp copy. TPM executes
+# it, so without +x TPM exits 126 and continuum never loads: no auto-restore on
+# the next server start, and the status-bar auto-save silently gone too.
+chmod +x "$CONTINUUM"
 
 # continuum's auto-save is a decoy for detached servers: it rides on status-bar
 # redraws, which only happen while a client is attached, so a server nobody is
@@ -180,10 +184,24 @@ mkdir -p ~/.local/bin
 curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/tmux-autosave -o ~/.local/bin/tmux-autosave
 chmod +x ~/.local/bin/tmux-autosave
 
+# Stock resurrect saves a pane's foreground command as typed, so a Claude Code
+# pane comes back as a fresh "claude" instead of the session it was running.
+# claude_session.sh is a resurrect save-command strategy that records
+# "claude --resume <sessionId>" instead (selected in .tmux.conf). resurrect looks
+# strategies up by name inside its plugin directory only; the file is untracked
+# there, so the pull above leaves it alone, but a fresh box needs it downloaded.
+STRATEGIES="$HOME/.tmux/plugins/tmux-resurrect/save_command_strategies"
+mkdir -p "$STRATEGIES"
+curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/claude_session.sh \
+    -o "$STRATEGIES/claude_session.sh"
+chmod +x "$STRATEGIES/claude_session.sh"
+
 # Retrofit a server that is already running (it loaded the old config, so it
-# has no autosave loop): start the loop in it and snapshot the sessions now.
+# has no autosave loop): reload the config so the snapshot below uses the current
+# plugin options, start the loop in it and snapshot the sessions now.
 # No-ops when no server is running; the loop itself guards against duplicates.
 if tmux has-session 2>/dev/null; then
+    tmux source-file ~/.tmux.conf 2>/dev/null || true
     tmux run-shell -b "$HOME/.local/bin/tmux-autosave" 2>/dev/null || true
     if "$HOME/.tmux/plugins/tmux-resurrect/scripts/save.sh" quiet >/dev/null 2>&1; then
         echo "Saved a snapshot of the currently running tmux sessions"
