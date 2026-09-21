@@ -37,11 +37,18 @@ esac
 # a dead socket — or a NEW server with fresh options and its own loop — and
 # bows out instead of double-saving. The has-session check keeps a session-less
 # server (exit-empty off) from clobbering the last good snapshot with nothing.
+#
+# A server holding nothing but tmux-start's `_boot` holder is skipped for the same
+# reason: it means the restore has not populated the server (it failed, or is still
+# running), and saving there is how a failed restore turns into permanent loss of
+# the snapshot it failed to restore. Work inside a session named `_boot` is never
+# saved; rename it and saving resumes on the next tick.
 while :; do
     sleep "$((interval_min * 60))"
     [ "$(tmux show-option -gqv @autosave-pid 2>/dev/null)" = "$$" ] || break
     tmux has-session 2>/dev/null || break
     [ -x "$SAVE" ] || break
+    [ "$(tmux list-sessions -F '#{session_name}' 2>/dev/null)" = "_boot" ] && continue
     "$SAVE" quiet >/dev/null 2>&1 || true
 done
 exit 0

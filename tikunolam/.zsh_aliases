@@ -54,16 +54,23 @@ tmux-start() {
     return
   fi
   local restore="$HOME/.tmux/plugins/tmux-resurrect/scripts/restore.sh"
-  if [ -x "$restore" ]; then
-    tmux new-session -d -s _boot            # holder keeps the server alive during restore
-    "$restore"
-    sleep 1
-    # drop the holder if real sessions came back
-    if tmux list-sessions 2>/dev/null | grep -qv '^_boot:'; then
-      tmux kill-session -t _boot 2>/dev/null
-    fi
-    tmux attach "$@"
-  else
+  if [ ! -x "$restore" ]; then
     tmux new-session "$@"
+    return
   fi
+  tmux new-session -d -s _boot            # holder keeps the server alive during restore
+  # run-shell, not a direct call: restore.sh derives the socket from $TMUX, which is
+  # empty outside tmux, so calling it directly creates NO sessions (one "error
+  # creating  (No such file or directory)" per session, then a cascade of "can't
+  # find window" for every pane) and only the holder survives. run-shell runs it
+  # inside the server with $TMUX set and blocks until it finishes; this is how
+  # resurrect's own prefix + C-r binding invokes it.
+  tmux run-shell "$restore"
+  # drop the holder if real sessions came back
+  if tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -qv '^_boot$'; then
+    tmux kill-session -t _boot 2>/dev/null
+  else
+    echo "tmux-start: restore brought back no sessions; snapshots are intact in ~/.local/share/tmux/resurrect" >&2
+  fi
+  tmux attach "$@"
 }
