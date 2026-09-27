@@ -1,0 +1,71 @@
+#!/bin/sh
+# tmux-status — live tmux sessions next to what the last resurrect snapshot holds,
+# so a restore can be checked at a glance: whether every pane came back and whether
+# the Claude Code sessions in them are actually running.
+#
+# CLAUDE counts panes whose foreground process is claude right now. SNAP is what the
+# last snapshot expects for that session, so CLAUDE < SNAP means panes came back but
+# their sessions did not start (a trust prompt, a missing transcript, a crash).
+
+SNAP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/tmux/resurrect"
+SNAP="$SNAP_DIR/last"
+
+file_epoch() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null; }
+
+human_age() {
+    _d=$(($1 / 86400)); _h=$(($1 % 86400 / 3600)); _m=$(($1 % 3600 / 60))
+    if [ "$_d" -gt 0 ]; then echo "${_d}d ${_h}h"
+    elif [ "$_h" -gt 0 ]; then echo "${_h}h ${_m}m"
+    else echo "${_m}m"; fi
+}
+
+snap_panes=0
+snap_claude=0
+if [ -f "$SNAP" ]; then
+    snap_panes=$(grep -c '^pane' "$SNAP" 2>/dev/null || echo 0)
+    snap_claude=$(grep -c 'claude ' "$SNAP" 2>/dev/null || echo 0)
+    snap_age=$(human_age $(( $(date +%s) - $(file_epoch "$SNAP") )))
+fi
+
+if ! tmux has-session 2>/dev/null; then
+    echo "server:   not running"
+    [ -f "$SNAP" ] && echo "snapshot: $snap_age old, $snap_panes panes, $snap_claude claude - run tmux-restore"
+    exit 0
+fi
+
+live_panes=$(tmux list-panes -a 2>/dev/null | wc -l | tr -d ' ')
+
+echo "server:   up since $(tmux display-message -p '#{t:start_time}' 2>/dev/null)"
+if [ -f "$SNAP" ]; then
+    if [ "$live_panes" -eq "$snap_panes" ]; then
+        _match="matches live"
+    else
+        _match="live has $live_panes"
+    fi
+    echo "snapshot: $snap_age old, $snap_panes panes, $snap_claude claude ($_match)"
+fi
+echo
+
+# One ps pass; each pane is then matched by its shell's pid against this list.
+ps_all="$(ps -axo pid=,ppid=,args= 2>/dev/null)"
+
+printf '%-20s %7s %6s %7s %5s %s\n' SESSION WINDOWS PANES CLAUDE SNAP ATTACHED
+tmux list-sessions -F '#{session_name}	#{session_attached}' 2>/dev/null | while IFS='	' read -r name attached; do
+    windows=$(tmux list-windows -t "$name" 2>/dev/null | wc -l | tr -d ' ')
+    panes=0
+    claude=0
+    for pid in $(tmux list-panes -s -t "$name" -F '#{pane_pid}' 2>/dev/null); do
+        panes=$((panes + 1))
+        echo "$ps_all" | awk -v ppid="$pid" '
+            $2 == ppid { sub(/^ *[0-9]+ +[0-9]+ +/, ""); if ($0 ~ /^claude( |$)/) found = 1 }
+            END { exit found ? 0 : 1 }
+        ' && claude=$((claude + 1))
+    done
+    if [ -f "$SNAP" ]; then
+        snap=$(awk -F'\t' -v s="$name" '$1 == "pane" && $2 == s && $0 ~ /claude / { n++ } END { print n + 0 }' "$SNAP")
+    else
+        snap="-"
+    fi
+    [ "$attached" -gt 0 ] 2>/dev/null && att=yes || att=no
+    printf '%-20s %7s %6s %7s %5s %s\n' "$name" "$windows" "$panes" "$claude" "$snap" "$att"
+done

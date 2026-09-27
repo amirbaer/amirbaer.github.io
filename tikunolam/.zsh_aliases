@@ -46,31 +46,24 @@ jctl()   { cat "$1" | jq | less ; }
 jctlip() { local tmp=$(mktemp) && sed 's/\x1b\[[0-9;]*m//g' "$1" | command jq . > "$tmp" && mv "$tmp" "$1"; }
 mem()    { ps -eo rss,pid,euser,args:100 --sort %mem | grep -v grep | grep -i "$@" | awk '{printf $1/1024 "MB"; $1=""; print }'; }
 
-# Start tmux and restore the last saved sessions (tmux-resurrect) if the server
-# isn't already running -- e.g. after a reboot. Attaches when done.
+# Restore the last saved tmux sessions (tmux-resurrect) when no server is running,
+# then print what is there. The boot unit installed by install.sh already does the
+# restore after a reboot, so this is now mostly a status command.
+#
+# Bare `tmux-start` never attaches: it used to drop you into whichever session came
+# first, which read as "it opened a random session". Pass a name to attach.
 tmux-start() {
-  if tmux has-session 2>/dev/null; then
-    tmux attach "$@"
-    return
-  fi
-  local restore="$HOME/.tmux/plugins/tmux-resurrect/scripts/restore.sh"
+  local restore="$HOME/.local/bin/tmux-restore"
   if [ ! -x "$restore" ]; then
-    tmux new-session "$@"
+    echo "tmux-start: $restore is missing - run install.sh" >&2
+    return 1
+  fi
+  if [ $# -gt 0 ]; then
+    "$restore" >/dev/null || return 1
+    tmux attach -t "$1"
     return
   fi
-  tmux new-session -d -s _boot            # holder keeps the server alive during restore
-  # run-shell, not a direct call: restore.sh derives the socket from $TMUX, which is
-  # empty outside tmux, so calling it directly creates NO sessions (one "error
-  # creating  (No such file or directory)" per session, then a cascade of "can't
-  # find window" for every pane) and only the holder survives. run-shell runs it
-  # inside the server with $TMUX set and blocks until it finishes; this is how
-  # resurrect's own prefix + C-r binding invokes it.
-  tmux run-shell "$restore"
-  # drop the holder if real sessions came back
-  if tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -qv '^_boot$'; then
-    tmux kill-session -t _boot 2>/dev/null
-  else
-    echo "tmux-start: restore brought back no sessions; snapshots are intact in ~/.local/share/tmux/resurrect" >&2
-  fi
-  tmux attach "$@"
+  "$restore" || return 1
+  echo
+  tmux-status
 }

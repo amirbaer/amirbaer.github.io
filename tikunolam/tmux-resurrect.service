@@ -1,0 +1,16 @@
+[Unit]
+Description=Restore tmux sessions from the last tmux-resurrect snapshot
+Documentation=https://github.com/amirbaer/amirbaer.github.io/tree/master/tikunolam
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/tmux-restore
+# RemainAfterExit keeps the unit active after the script exits. Without it the unit
+# goes inactive immediately, systemd tears down its cgroup, and the tmux server the
+# script just started dies with it. KillMode=process is the same protection for a
+# later `systemctl --user restart`: only the script is signalled, never the server.
+RemainAfterExit=yes
+KillMode=process
+
+[Install]
+WantedBy=default.target

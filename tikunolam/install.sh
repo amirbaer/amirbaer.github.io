@@ -196,6 +196,55 @@ curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/
     -o "$STRATEGIES/claude_session.sh"
 chmod +x "$STRATEGIES/claude_session.sh"
 
+# tmux-restore recreates the snapshot in a fresh server without attaching, and
+# tmux-status prints live sessions against what the snapshot expects.
+for script in tmux-restore tmux-status; do
+    curl -fsSL "https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/$script" \
+        -o "$HOME/.local/bin/$script"
+    chmod +x "$HOME/.local/bin/$script"
+done
+
+echo "=== Installing boot-time tmux restore ==="
+# Restoring on boot is what makes tmux-start optional: sessions are back before
+# anyone opens a terminal. tmux-restore no-ops when a server is already up, so a
+# second trigger cannot duplicate sessions.
+if [ "$PLATFORM" = brew ]; then
+    # macOS: a LaunchAgent runs it at login. The plist needs absolute paths, and
+    # launchd gives a bare PATH, so tmux's directory is spelled out.
+    AGENT="$HOME/Library/LaunchAgents/com.tikunolam.tmux-restore.plist"
+    mkdir -p "$HOME/Library/LaunchAgents"
+    TMUX_BIN="$(command -v tmux || echo /usr/local/bin/tmux)"
+    cat > "$AGENT" << AGENTPLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>com.tikunolam.tmux-restore</string>
+    <key>ProgramArguments</key>
+    <array><string>$HOME/.local/bin/tmux-restore</string></array>
+    <key>RunAtLoad</key><true/>
+    <key>EnvironmentVariables</key>
+    <dict><key>PATH</key><string>$(dirname "$TMUX_BIN"):/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
+    <key>StandardOutPath</key><string>$HOME/.local/share/tmux-restore.log</string>
+    <key>StandardErrorPath</key><string>$HOME/.local/share/tmux-restore.log</string>
+</dict>
+</plist>
+AGENTPLIST
+    launchctl unload "$AGENT" 2>/dev/null || true
+    launchctl load "$AGENT" 2>/dev/null && echo "LaunchAgent loaded (restores at login)"
+elif command -v systemctl >/dev/null 2>&1; then
+    # Linux: a systemd user unit. Lingering is what lets it start at boot instead
+    # of waiting for an interactive login.
+    mkdir -p "$HOME/.config/systemd/user"
+    curl -fsSL https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam/tmux-resurrect.service \
+        -o "$HOME/.config/systemd/user/tmux-resurrect.service"
+    loginctl enable-linger "$USER" 2>/dev/null || echo "  (could not enable linger - the unit will wait for a login)"
+    systemctl --user daemon-reload 2>/dev/null || true
+    systemctl --user enable tmux-resurrect.service 2>/dev/null && echo "systemd user unit enabled (restores at boot)"
+else
+    echo "no launchd or systemd here - sessions still restore via tmux-start"
+fi
+
 # Retrofit a server that is already running (it loaded the old config, so it
 # has no autosave loop): reload the config so the snapshot below uses the current
 # plugin options, start the loop in it and snapshot the sessions now.

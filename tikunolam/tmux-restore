@@ -1,0 +1,48 @@
+#!/bin/sh
+# tmux-restore — recreate the last tmux-resurrect snapshot in a fresh tmux server.
+#
+# This is the boot path: install.sh wires it to a systemd user unit on Linux and a
+# LaunchAgent on macOS, so sessions come back on their own after a restart and
+# nobody has to remember to run tmux-start. It is also the body of tmux-start.
+#
+# It never attaches, and it does nothing when a server is already running, so
+# running it twice cannot duplicate sessions.
+
+RESTORE="$HOME/.tmux/plugins/tmux-resurrect/scripts/restore.sh"
+SNAP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/tmux/resurrect"
+
+if tmux has-session 2>/dev/null; then
+    echo "tmux-restore: server already running, nothing to restore"
+    exit 0
+fi
+
+if [ ! -x "$RESTORE" ]; then
+    echo "tmux-restore: $RESTORE is missing - run install.sh" >&2
+    exit 1
+fi
+
+# The holder keeps the server alive while restore.sh works: a server whose last
+# session ends exits, and restore.sh needs a live server to send its commands to.
+tmux new-session -d -s _boot || exit 1
+
+# run-shell, not a direct call: restore.sh takes the server socket from $TMUX,
+# which is empty at boot and in any shell outside tmux, so calling it directly
+# creates NO sessions - one "error creating  (No such file or directory)" per
+# session, then a "can't find window" per pane, leaving only the holder. run-shell
+# runs it inside the server with $TMUX set and blocks until it finishes; this is
+# how resurrect's own prefix + C-r binding invokes it.
+tmux run-shell "$RESTORE"
+
+if tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -qv '^_boot$'; then
+    tmux kill-session -t _boot 2>/dev/null
+    sessions=$(tmux list-sessions 2>/dev/null | wc -l | tr -d ' ')
+    panes=$(tmux list-panes -a 2>/dev/null | wc -l | tr -d ' ')
+    echo "tmux-restore: restored $sessions sessions, $panes panes"
+    exit 0
+fi
+
+# The holder stays so the server (and this shell's tmux) is still usable. The
+# snapshot is untouched, and tmux-autosave refuses to overwrite it while the
+# holder is the only session, so a retry still has something to restore from.
+echo "tmux-restore: the snapshot produced no sessions - it is intact in $SNAP_DIR" >&2
+exit 1
