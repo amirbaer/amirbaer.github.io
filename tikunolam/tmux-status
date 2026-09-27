@@ -10,7 +10,9 @@
 SNAP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/tmux/resurrect"
 SNAP="$SNAP_DIR/last"
 
-file_epoch() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null; }
+# GNU stat first: its -f prints FILESYSTEM status and exits 0, so trying BSD's
+# "-f <format>" first would succeed on Linux and hand back a block-count blob.
+file_epoch() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
 
 human_age() {
     _d=$(($1 / 86400)); _h=$(($1 % 86400 / 3600)); _m=$(($1 % 3600 / 60))
@@ -24,12 +26,16 @@ snap_claude=0
 if [ -f "$SNAP" ]; then
     snap_panes=$(grep -c '^pane' "$SNAP" 2>/dev/null || echo 0)
     snap_claude=$(grep -c 'claude ' "$SNAP" 2>/dev/null || echo 0)
-    snap_age=$(human_age $(( $(date +%s) - $(file_epoch "$SNAP") )))
+    snap_epoch=$(file_epoch "$SNAP")
+    case "$snap_epoch" in
+        '' | *[!0-9]*) snap_age="age unknown" ;;
+        *) snap_age="$(human_age $(( $(date +%s) - snap_epoch ))) old" ;;
+    esac
 fi
 
 if ! tmux has-session 2>/dev/null; then
     echo "server:   not running"
-    [ -f "$SNAP" ] && echo "snapshot: $snap_age old, $snap_panes panes, $snap_claude claude - run tmux-restore"
+    [ -f "$SNAP" ] && echo "snapshot: $snap_age, $snap_panes panes, $snap_claude claude - run tmux-restore"
     exit 0
 fi
 
@@ -42,7 +48,7 @@ if [ -f "$SNAP" ]; then
     else
         _match="live has $live_panes"
     fi
-    echo "snapshot: $snap_age old, $snap_panes panes, $snap_claude claude ($_match)"
+    echo "snapshot: $snap_age, $snap_panes panes, $snap_claude claude ($_match)"
 fi
 echo
 
