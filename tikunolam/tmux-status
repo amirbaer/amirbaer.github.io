@@ -25,7 +25,10 @@ snap_panes=0
 snap_claude=0
 if [ -f "$SNAP" ]; then
     snap_panes=$(grep -c '^pane' "$SNAP" 2>/dev/null || echo 0)
-    snap_claude=$(grep -c 'claude ' "$SNAP" 2>/dev/null || echo 0)
+    # The command is the last tab-separated field, written with a leading ":". Match
+    # there and not anywhere in the line: a pane title or a cwd under ~/.claude would
+    # otherwise count as a Claude Code pane.
+    snap_claude=$(awk -F'\t' '$1 == "pane" && $NF ~ /^:?claude( |$)/ { n++ } END { print n + 0 }' "$SNAP")
     snap_epoch=$(file_epoch "$SNAP")
     case "$snap_epoch" in
         '' | *[!0-9]*) snap_age="age unknown" ;;
@@ -68,7 +71,7 @@ tmux list-sessions -F '#{session_name}	#{session_attached}' 2>/dev/null | while 
         ' && claude=$((claude + 1))
     done
     if [ -f "$SNAP" ]; then
-        snap=$(awk -F'\t' -v s="$name" '$1 == "pane" && $2 == s && $0 ~ /claude / { n++ } END { print n + 0 }' "$SNAP")
+        snap=$(awk -F'\t' -v s="$name" '$1 == "pane" && $2 == s && $NF ~ /^:?claude( |$)/ { n++ } END { print n + 0 }' "$SNAP")
     else
         snap="-"
     fi
