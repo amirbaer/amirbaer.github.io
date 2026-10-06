@@ -406,7 +406,15 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
 </plist>
 POLLERPLIST
     launchctl bootout "gui/$(id -u)/com.amirbaer.cswap-usage-poller" 2>/dev/null || true
-    launchctl bootstrap "gui/$(id -u)" "$POLLER_AGENT" 2>/dev/null && echo "LaunchAgent loaded (polls every 5 minutes)"
+    if launchctl bootstrap "gui/$(id -u)" "$POLLER_AGENT" 2>/dev/null; then
+        echo "LaunchAgent loaded (polls every 5 minutes)"
+    else
+        # Headless Mac over SSH: no GUI launchd domain, so use cron instead.
+        rm -f "$POLLER_AGENT"
+        (crontab -l 2>/dev/null | grep -v cswap-usage-poller; \
+         echo "*/5 * * * * PATH=\$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin \$HOME/.local/bin/cswap-usage-poller >> \$HOME/.claude-swap-backup/usage-poller.log 2>&1") | crontab -
+        echo "cron entry installed (no launchd GUI domain; polls every 5 minutes)"
+    fi
 elif command -v systemctl >/dev/null 2>&1; then
     mkdir -p "$HOME/.config/systemd/user"
     curl -fsSL "$RAW/cswap-usage-poller.service" -o "$HOME/.config/systemd/user/cswap-usage-poller.service"
