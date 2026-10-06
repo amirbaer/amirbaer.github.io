@@ -1,0 +1,10 @@
+[Unit]
+Description=Fill cswap's usage cache for setup-token accounts
+Documentation=https://github.com/amirbaer/amirbaer.github.io/tree/master/tikunolam
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/cswap-usage-poller
+# The poller runs `claude` for the per-model window; make sure the usual
+# user-local install locations are on PATH under systemd.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin

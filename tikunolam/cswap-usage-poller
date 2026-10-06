@@ -1,0 +1,267 @@
+#!/bin/sh
+''':'
+exec "$HOME/.local/share/uv/tools/claude-swap/bin/python3" "$0" "$@"
+'''
+"""Fill cswap's usage cache for setup-token slots.
+
+A setup token (``claude setup-token``) may only run model requests, so cswap's
+usage endpoint answers 403 and the slot shows "usage unavailable". Every model
+reply, including a rejected one, still carries the account's 5h/7d windows in
+``anthropic-ratelimit-unified-*`` headers. This script sends one one-token
+request per setup-token slot, reads those headers, and writes the result into
+cswap's own cache through cswap's own store (same lock, same schema), so
+``cswap list`` and the auto-switcher see real numbers.
+
+Run every few minutes from launchd. Prints one line per slot. Never prints a
+token.
+"""
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
+
+from claude_swap import oauth
+from claude_swap.switcher import ClaudeAccountSwitcher
+from claude_swap.usage_store import FetchRecord, UsageStore
+
+MODEL = "claude-haiku-4-5-20251001"
+API_URL = "https://api.anthropic.com/v1/messages"
+TIMEOUT_S = 30
+
+# The per-model Fable window is not in the headers of a direct request (the API
+# answers a bare 429 to Fable/Opus calls from anything but Claude Code). Claude
+# Code itself reports it in its stream as the ``seven_day_overage_included``
+# window of a Fable call (matched cswap's own Fable figure on a login slot,
+# 2026-10-06). One such call costs ~1.5k Fable tokens, so it runs every three
+# hours, not every pass; the last value is carried forward in between.
+FABLE_MODEL = "claude-fable-5-1"
+FABLE_WINDOW_KEY = "seven_day_overage_included"
+FABLE_INTERVAL_S = 3 * 3600
+FABLE_TIMEOUT_S = 120
+
+def setup_token_slots(sw: ClaudeAccountSwitcher) -> dict[str, tuple[str, str]]:
+    """Slots whose stored credential is a setup token: an OAuth payload with
+    an access token but no refresh token. Login slots (refresh token present)
+    and API-key slots (not JSON) are left to cswap itself."""
+    seq = sw._get_sequence_data() or {}
+    out: dict[str, tuple[str, str]] = {}
+    for num, acct in (seq.get("accounts") or {}).items():
+        email = acct.get("email", "")
+        org = acct.get("organizationUuid") or ""
+        creds = sw.read_account_credentials(num, email)
+        data = oauth.extract_oauth_data(creds) if creds else None
+        if not data or data.get("refreshToken") or not data.get("accessToken"):
+            continue
+        out[num] = (email, org)
+    return out
+
+
+def probe(token: str) -> tuple[int, dict[str, str], float | None]:
+    """One minimal request; returns (status, lowercase headers, retry_after)."""
+    body = json.dumps({
+        "model": MODEL,
+        "max_tokens": 1,
+        "messages": [{"role": "user", "content": "hi"}],
+    }).encode()
+    req = urllib.request.Request(
+        API_URL,
+        data=body,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "anthropic-version": "2023-06-01",
+            "anthropic-beta": "oauth-2025-04-20",
+            "content-type": "application/json",
+            "User-Agent": "cswap-usage-poller/0.1",
+        },
+    )
+    try:
+        resp = urllib.request.urlopen(req, timeout=TIMEOUT_S)
+        status, headers = resp.status, resp.headers
+        resp.read()
+    except urllib.error.HTTPError as e:
+        status, headers = e.code, e.headers
+        e.read()
+    h = {k.lower(): v for k, v in headers.items()}
+    retry_after = None
+    if h.get("retry-after", "").isdigit():
+        retry_after = float(h["retry-after"])
+    return status, h, retry_after
+
+
+def window(h: dict[str, str], prefix: str) -> dict | None:
+    """Build one cswap usage window from the unified headers."""
+    util = h.get(f"anthropic-ratelimit-unified-{prefix}-utilization")
+    reset = h.get(f"anthropic-ratelimit-unified-{prefix}-reset")
+    if util is None:
+        return None
+    try:
+        pct = min(100.0, float(util) * 100.0)
+    except ValueError:
+        return None
+    entry: dict = {"pct": pct}
+    if reset and reset.isdigit():
+        iso = datetime.fromtimestamp(int(reset), tz=timezone.utc).isoformat()
+        entry["resets_at"] = iso
+        entry["countdown"], entry["clock"] = oauth.format_reset(iso)
+    return entry
+
+
+def usage_from_headers(h: dict[str, str]) -> dict | None:
+    five = window(h, "5h")
+    seven = window(h, "7d")
+    if five is None and seven is None:
+        return None
+    usage: dict = {}
+    if five is not None:
+        usage["five_hour"] = five
+    if seven is not None:
+        usage["seven_day"] = seven
+    return usage
+
+
+def fable_window(token: str) -> dict | None:
+    """Ask Claude Code itself for the Fable window: a one-word Fable call with
+    the smallest prompt it allows, read from its ``rate_limit_event``."""
+    claude = shutil.which("claude") or os.path.expanduser("~/.local/bin/claude")
+    env = dict(os.environ, CLAUDE_CODE_OAUTH_TOKEN=token)
+    cmd = [
+        claude, "-p", "reply ok", "--model", FABLE_MODEL,
+        "--system-prompt", "Reply ok.", "--tools", "",
+        "--output-format", "stream-json", "--verbose",
+    ]
+    try:
+        out = subprocess.run(
+            cmd, env=env, capture_output=True, text=True, timeout=FABLE_TIMEOUT_S,
+        ).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    for line in out.splitlines():
+        try:
+            d = json.loads(line)
+        except ValueError:
+            continue
+        if d.get("type") != "rate_limit_event":
+            continue
+        win = (d.get("rate_limit_info") or {}).get("unifiedWindows") or {}
+        w = win.get(FABLE_WINDOW_KEY)
+        if not isinstance(w, dict) or not isinstance(w.get("utilization"), (int, float)):
+            return None
+        entry: dict = {"name": "Fable", "pct": min(100.0, float(w["utilization"]) * 100.0)}
+        reset = w.get("resetsAt")
+        if isinstance(reset, (int, float)):
+            iso = datetime.fromtimestamp(int(reset), tz=timezone.utc).isoformat()
+            entry["resets_at"] = iso
+            entry["countdown"], entry["clock"] = oauth.format_reset(iso)
+        return entry
+    return None
+
+
+def main() -> int:
+    sw = ClaudeAccountSwitcher()
+    store = UsageStore(sw.backup_dir / "cache")
+    slots = setup_token_slots(sw)
+    if not slots:
+        print("no setup-token slots")
+        return 0
+
+    # When each slot's Fable window was last probed (our own stamp; cswap's
+    # fetchedAt is rewritten by every pass).
+    state_path = sw.backup_dir / "cache" / "usage-poller-state.json"
+    try:
+        state = json.loads(state_path.read_text())
+    except (OSError, ValueError):
+        state = {}
+    fable_at: dict[str, float] = state.get("fableAt", {})
+    # The 7d (pct, resets_at) each slot showed when its Fable window was last
+    # probed; an unchanged pair means no use since, so no probe.
+    fable_seen: dict[str, dict] = state.get("fableSeen", {})
+    previous = store.entries(slots)
+    now = time.time()
+
+    outcomes: dict[str, FetchRecord] = {}
+    for num, (email, _org) in sorted(slots.items(), key=lambda kv: int(kv[0])):
+        creds = sw.read_account_credentials(num, email)
+        token = (oauth.extract_oauth_data(creds) or {}).get("accessToken", "")
+        try:
+            status, h, retry_after = probe(token)
+        except Exception as e:  # network, DNS, timeout
+            outcomes[num] = FetchRecord(error="network")
+            print(f"{num} {email}: network error ({type(e).__name__})")
+            continue
+        usage = usage_from_headers(h)
+        if usage is None:
+            # 401/403 here means the setup token itself is rejected.
+            err = f"http-{status}"
+            outcomes[num] = FetchRecord(error=err, retry_after_s=retry_after)
+            print(f"{num} {email}: {err}, no usage headers")
+            continue
+
+        # Fable: the window only moves when the account is used, and it resets
+        # together with the 7d window. So probe at most every FABLE_INTERVAL_S
+        # and only when the 7d figure changed since the last probe (idle
+        # accounts cost nothing); on a 7d reset, zero it without a probe.
+        fable = None
+        note = ""
+        last = previous.get(num)
+        for s in (last.last_good or {}).get("scoped", []) if last else []:
+            if s.get("name") == "Fable":
+                fable = s
+        seven = usage.get("seven_day", {})
+        seen = fable_seen.get(num, {})
+        seven_changed = (seven.get("pct"), seven.get("resets_at")) != (
+            seen.get("pct"), seen.get("resets_at")
+        )
+        # A real reset means the window we last saw has ended. A changed reset
+        # time while the old one is still in the future is a different token
+        # (slot re-entered), so that is not a reset: probe instead.
+        window_reset = False
+        if seen.get("resets_at") and seven.get("resets_at") != seen.get("resets_at"):
+            try:
+                old_end = datetime.fromisoformat(seen["resets_at"]).timestamp()
+                window_reset = old_end <= now
+            except ValueError:
+                window_reset = False
+            if not window_reset:
+                fable_at[num] = 0.0  # token swap: allow an immediate probe
+        if window_reset and fable is not None:
+            fable = dict(fable, pct=0.0)
+            for k in ("resets_at", "countdown", "clock"):
+                if k in seven:
+                    fable[k] = seven[k]
+            note = " reset"
+        due = now - fable_at.get(num, 0.0) >= FABLE_INTERVAL_S
+        if due and (fable is None or seven_changed):
+            fresh = fable_window(token)
+            if fresh is not None:
+                fable = fresh
+                fable_at[num] = now
+                fable_seen[num] = {"pct": seven.get("pct"), "resets_at": seven.get("resets_at")}
+                note = " fresh"
+        if fable is not None:
+            usage["scoped"] = [fable]
+
+        outcomes[num] = FetchRecord(usage=usage)
+        five = usage.get("five_hour", {}).get("pct")
+        seven = usage.get("seven_day", {}).get("pct")
+        fable_txt = f" Fable {fable['pct']:.0f}%{note}" if fable else ""
+        print(f"{num} {email}: 5h {five:.0f}% 7d {seven:.0f}%{fable_txt} (http {status})")
+
+    try:
+        state_path.write_text(json.dumps({"fableAt": fable_at, "fableSeen": fable_seen}))
+    except OSError:
+        pass
+
+    accepted = store.record(outcomes, slots)
+    skipped = set(outcomes) - accepted
+    if skipped:
+        print(f"deferred (cswap fetch in flight): {sorted(skipped, key=int)}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

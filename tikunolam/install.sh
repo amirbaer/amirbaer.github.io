@@ -375,6 +375,49 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     fi
 fi
 
+echo "=== Installing cswap-usage-poller ==="
+# Accounts registered in cswap from a `claude setup-token` (one-year token, no
+# weekly re-login) cannot read the usage endpoint, so cswap shows them as
+# "usage unavailable". The poller fills cswap's cache for those accounts every
+# 5 minutes from the rate-limit headers of a one-token request (plus an
+# occasional one-word Claude Code turn for the per-model window). Login
+# accounts are left to cswap itself. See cswap-usage-poller for details.
+RAW=https://raw.githubusercontent.com/amirbaer/amirbaer.github.io/master/tikunolam
+curl -fsSL "$RAW/cswap-usage-poller" -o ~/.local/bin/cswap-usage-poller
+chmod +x ~/.local/bin/cswap-usage-poller
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    POLLER_AGENT="$HOME/Library/LaunchAgents/com.amirbaer.cswap-usage-poller.plist"
+    mkdir -p "$HOME/Library/LaunchAgents" "$HOME/.claude-swap-backup"
+    cat > "$POLLER_AGENT" <<POLLERPLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.amirbaer.cswap-usage-poller</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>"\$HOME/.local/bin/cswap-usage-poller" >> "\$HOME/.claude-swap-backup/usage-poller.log" 2>&1</string>
+  </array>
+  <key>StartInterval</key><integer>300</integer>
+  <key>RunAtLoad</key><true/>
+</dict>
+</plist>
+POLLERPLIST
+    launchctl bootout "gui/$(id -u)/com.amirbaer.cswap-usage-poller" 2>/dev/null || true
+    launchctl bootstrap "gui/$(id -u)" "$POLLER_AGENT" 2>/dev/null && echo "LaunchAgent loaded (polls every 5 minutes)"
+elif command -v systemctl >/dev/null 2>&1; then
+    mkdir -p "$HOME/.config/systemd/user"
+    curl -fsSL "$RAW/cswap-usage-poller.service" -o "$HOME/.config/systemd/user/cswap-usage-poller.service"
+    curl -fsSL "$RAW/cswap-usage-poller.timer" -o "$HOME/.config/systemd/user/cswap-usage-poller.timer"
+    loginctl enable-linger "$USER" 2>/dev/null || true
+    systemctl --user daemon-reload 2>/dev/null || true
+    systemctl --user enable --now cswap-usage-poller.timer 2>/dev/null && echo "systemd user timer enabled (polls every 5 minutes)"
+else
+    echo "no launchd or systemd here - run cswap-usage-poller from cron every 5 minutes"
+fi
+
 echo "=== Setting up Claude Code hooks ==="
 mkdir -p ~/.claude
 if [ -f ~/.claude/settings.json ]; then
