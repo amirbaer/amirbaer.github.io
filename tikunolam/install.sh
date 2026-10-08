@@ -212,7 +212,7 @@ if [ "$PLATFORM" = brew ]; then
     # macOS: a LaunchAgent runs it at login. The plist needs absolute paths, and
     # launchd gives a bare PATH, so tmux's directory is spelled out.
     AGENT="$HOME/Library/LaunchAgents/com.tikunolam.tmux-restore.plist"
-    mkdir -p "$HOME/Library/LaunchAgents"
+    mkdir -p "$HOME/Library/LaunchAgents" "$HOME/.local/share"
     TMUX_BIN="$(command -v tmux || echo /usr/local/bin/tmux)"
     cat > "$AGENT" << AGENTPLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -230,8 +230,22 @@ if [ "$PLATFORM" = brew ]; then
 </dict>
 </plist>
 AGENTPLIST
-    launchctl unload "$AGENT" 2>/dev/null || true
-    launchctl load "$AGENT" 2>/dev/null && echo "LaunchAgent loaded (restores at login)"
+    launchctl bootout "gui/$(id -u)/com.tikunolam.tmux-restore" 2>/dev/null || true
+    if launchctl bootstrap "gui/$(id -u)" "$AGENT" 2>/dev/null; then
+        echo "LaunchAgent loaded (restores at login)"
+    else
+        # Headless Mac: this user has no GUI session to own a LaunchAgent (on an
+        # EC2 Mac the console belongs to another account), so there is no gui/
+        # domain to bootstrap into. The legacy `launchctl load` used to be the
+        # call here and it exits 0 while registering nothing, so boot restore
+        # silently never ran. cron is the trigger that works without a login.
+        rm -f "$AGENT"
+        CRON_PATH="\$HOME/.local/bin:$(dirname "$TMUX_BIN"):/usr/local/bin:/usr/bin:/bin"
+        CRON_CMD="\$HOME/.local/bin/tmux-restore >> \$HOME/.local/share/tmux-restore.log 2>&1"
+        (crontab -l 2>/dev/null | grep -v tmux-restore; \
+         echo "@reboot PATH=$CRON_PATH $CRON_CMD") | crontab -
+        echo "cron @reboot entry installed (no launchd GUI domain)"
+    fi
 elif command -v systemctl >/dev/null 2>&1; then
     # Linux: a systemd user unit. Lingering is what lets it start at boot instead
     # of waiting for an interactive login.
