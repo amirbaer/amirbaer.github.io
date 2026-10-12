@@ -30,9 +30,9 @@ check_brew_source_build_risk() {
     echo "   Effect: 'brew install vim' compiles LLVM from source — often 1-3 HOURS,"
     echo "           with almost no output, so it looks like the script is stuck."
     echo ""
-    echo "   Recommended fix, then re-run this script:"
+    echo "   Recommended fix: remove the tools, then re-run this script (it"
+    echo "   reinstalls them via softwareupdate, which also works headless):"
     echo "     sudo rm -rf /Library/Developer/CommandLineTools"
-    echo "     sudo xcode-select --install"
     echo ""
     echo "   (To proceed anyway and accept the slow build: ALLOW_SOURCE_BUILDS=1 $0)"
     echo ""
@@ -86,6 +86,46 @@ pkg_install() {
             ;;
     esac
 }
+
+# macOS: git, brew and every compiler need the Command Line Tools. The usual
+# `xcode-select --install` only works with a GUI session (it pops a dialog); on a
+# headless Mac (EC2, SSH-only) it fails with "no install could be requested".
+# `softwareupdate` can install the same package without any GUI, but only lists
+# it while a marker file exists. Skipped when the tools are already present.
+install_command_line_tools() {
+    [[ "$OSTYPE" == "darwin"* ]] || return 0
+    if xcode-select -p >/dev/null 2>&1 && [ -d "$(xcode-select -p)" ]; then
+        echo "Command Line Tools already installed ($(xcode-select -p)) — skipping"
+        return 0
+    fi
+
+    local marker=/tmp/.com.apple.dt.CommandLineTools.installondemand.in-progress
+    local label
+    touch "$marker"
+    # Output shape differs across macOS versions ("* Label: Command Line Tools
+    # for Xcode-26.0" on newer, "* Command Line Tools for Xcode-12.5" on older);
+    # the grep handles both. Newest version wins when several are listed.
+    label="$(softwareupdate -l 2>/dev/null \
+        | grep -o 'Command Line Tools for Xcode-[0-9.]*' | sort -V | tail -1 || true)"
+    if [ -z "$label" ]; then
+        rm -f "$marker"
+        echo "ERROR: softwareupdate lists no Command Line Tools package."
+        echo "       Download the dmg from https://developer.apple.com/download/all/"
+        echo "       (search 'Command Line Tools'), copy it here, then:"
+        echo "         hdiutil attach <dmg>"
+        echo "         sudo installer -pkg '/Volumes/Command Line Developer Tools/Command Line Tools.pkg' -target /"
+        echo "       and re-run this script."
+        exit 1
+    fi
+
+    echo "Installing $label via softwareupdate (headless; can stay silent for several minutes)"
+    sudo softwareupdate -i "$label" --verbose
+    rm -f "$marker"
+    xcode-select -p >/dev/null 2>&1 || { echo "ERROR: Command Line Tools still missing after install"; exit 1; }
+}
+
+echo "=== Installing Command Line Tools (macOS) ==="
+install_command_line_tools
 
 echo "=== Installing tools ==="
 missing=()
