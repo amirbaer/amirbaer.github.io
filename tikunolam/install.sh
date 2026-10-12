@@ -292,7 +292,12 @@ if [ "$PLATFORM" = brew ]; then
 </plist>
 AGENTPLIST
     launchctl bootout "gui/$(id -u)/com.tikunolam.tmux-restore" 2>/dev/null || true
-    if launchctl bootstrap "gui/$(id -u)" "$AGENT" 2>/dev/null; then
+    # The bootstrap has to be confirmed against launchctl list, not just its exit
+    # code: on a Mac where this user owns no GUI session it has reported success
+    # while registering nothing, which is how boot restore went missing on two
+    # boxes without the install printing anything unusual.
+    if launchctl bootstrap "gui/$(id -u)" "$AGENT" 2>/dev/null &&
+        launchctl list 2>/dev/null | grep -q com.tikunolam.tmux-restore; then
         echo "LaunchAgent loaded (restores at login)"
     else
         # Headless Mac: this user has no GUI session to own a LaunchAgent (on an
@@ -307,6 +312,12 @@ AGENTPLIST
          echo "@reboot PATH=$CRON_PATH $CRON_CMD") | crontab -
         echo "cron @reboot entry installed (no launchd GUI domain)"
     fi
+    if launchctl list 2>/dev/null | grep -q com.tikunolam.tmux-restore ||
+        crontab -l 2>/dev/null | grep -q tmux-restore; then
+        echo "  boot trigger verified"
+    else
+        echo "  WARNING: no boot trigger - sessions only come back by running tmux-start" >&2
+    fi
 elif command -v systemctl >/dev/null 2>&1; then
     # Linux: a systemd user unit. Lingering is what lets it start at boot instead
     # of waiting for an interactive login.
@@ -315,7 +326,12 @@ elif command -v systemctl >/dev/null 2>&1; then
         -o "$HOME/.config/systemd/user/tmux-resurrect.service"
     loginctl enable-linger "$USER" 2>/dev/null || echo "  (could not enable linger - the unit will wait for a login)"
     systemctl --user daemon-reload 2>/dev/null || true
-    systemctl --user enable tmux-resurrect.service 2>/dev/null && echo "systemd user unit enabled (restores at boot)"
+    systemctl --user enable tmux-resurrect.service 2>/dev/null || true
+    if systemctl --user is-enabled tmux-resurrect.service >/dev/null 2>&1; then
+        echo "systemd user unit enabled (restores at boot)"
+    else
+        echo "  WARNING: no boot trigger - sessions only come back by running tmux-start" >&2
+    fi
 else
     echo "no launchd or systemd here - sessions still restore via tmux-start"
 fi
