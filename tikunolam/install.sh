@@ -163,11 +163,32 @@ case "$PLATFORM" in
         ;;
 esac
 
+# macOS: Node.js comes from the official prebuilt tarball, not brew. Homebrew
+# ships no bottles for Intel Macs any more (Tier 3 since September 2026), so
+# `brew install node` compiles it from source for hours. The tarball needs no
+# compiler. bin/ lib/ include/ share/ land under ~/.local, the same prefix the
+# Codex npm install below uses, so ~/.local/bin/node is already on PATH.
+install_node_tarball() {
+    local arch ver
+    case "$(uname -m)" in
+        arm64) arch=arm64 ;;
+        *) arch=x64 ;;
+    esac
+    ver="$(curl -fsSL https://nodejs.org/dist/index.json \
+        | python3 -c 'import json,sys; print(next(v["version"] for v in json.load(sys.stdin) if v["lts"]))')"
+    echo "Installing Node.js $ver (LTS) for darwin-$arch into ~/.local"
+    mkdir -p ~/.local
+    curl -fsSL "https://nodejs.org/dist/$ver/node-$ver-darwin-$arch.tar.gz" \
+        | tar -xz -C ~/.local --strip-components=1 -f - \
+            "node-$ver-darwin-$arch/bin" "node-$ver-darwin-$arch/lib" \
+            "node-$ver-darwin-$arch/include" "node-$ver-darwin-$arch/share"
+}
+
 echo "=== Installing Node.js ==="
 if have node && have npm; then
     echo "node + npm already installed — skipping"
 elif [ "$PLATFORM" = brew ]; then
-    pkg_install node
+    install_node_tarball
 else
     pkg_install nodejs npm
 fi
