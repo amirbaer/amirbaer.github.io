@@ -60,13 +60,19 @@ ps_all="$(ps -axo pid=,ppid=,args= 2>/dev/null)"
 
 printf '%-20s %7s %6s %7s %5s %s\n' SESSION WINDOWS PANES CLAUDE SNAP ATTACHED
 tmux list-sessions -F '#{session_name}	#{session_attached}' 2>/dev/null | while IFS='	' read -r name attached; do
-    windows=$(tmux list-windows -t "$name" 2>/dev/null | wc -l | tr -d ' ')
+    # "=" makes the target an exact session name. A bare `-t dsl` can resolve to
+    # another session such as dsl-ui, so this table showed dsl-ui's panes under dsl.
+    windows=$(tmux list-windows -t "=$name" 2>/dev/null | wc -l | tr -d ' ')
     panes=0
     claude=0
-    for pid in $(tmux list-panes -s -t "$name" -F '#{pane_pid}' 2>/dev/null); do
+    for pid in $(tmux list-panes -s -t "=$name" -F '#{pane_pid}' 2>/dev/null); do
         panes=$((panes + 1))
+        # Claude is either a child of the pane's shell or, in a window opened with a
+        # command, the pane's own process.
         echo "$ps_all" | awk -v ppid="$pid" '
-            $2 == ppid { sub(/^ *[0-9]+ +[0-9]+ +/, ""); if ($0 ~ /^claude( |$)/) found = 1 }
+            ($2 == ppid || $1 == ppid) {
+                sub(/^ *[0-9]+ +[0-9]+ +/, ""); if ($0 ~ /^claude( |$)/) found = 1
+            }
             END { exit found ? 0 : 1 }
         ' && claude=$((claude + 1))
     done

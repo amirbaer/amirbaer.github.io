@@ -34,10 +34,36 @@ start_epoch() {
     date -j -f '%a %b %d %T %Y' "$lstart" +%s 2>/dev/null || date -d "$lstart" +%s 2>/dev/null
 }
 
-# Registry files of dead processes linger and pids get reused, so a file counts only when the
-# process it names started within a minute of the file's startedAt (milliseconds since the epoch).
+# procStart from the registry, converted to what this OS reports for the live process: clock ticks
+# since boot on Linux (/proc/<pid>/stat field 22), seconds since the epoch on macOS (UTC timestamp).
+registry_proc_start() {
+    local raw
+    raw="$(grep -oE '"procStart" *: *"[^"]*"' "$1" | head -n 1 | sed -E 's/.*: *"([^"]*)"/\1/')"
+    case "$raw" in
+        "") return 1 ;;
+        *[!0-9]*) TZ=UTC date -j -f '%a %b %d %T %Y' "$raw" +%s 2>/dev/null ;;
+        *) echo "$raw" ;;
+    esac
+}
+
+live_proc_start() {
+    if [ -r "/proc/$1/stat" ]; then
+        awk '{print $22}' "/proc/$1/stat"
+    else
+        start_epoch "$1"
+    fi
+}
+
+# Registry files of dead processes linger and pids get reused, so a file must belong to the live
+# process. procStart identifies it exactly. startedAt is only a fallback, because Claude Code can
+# write it minutes after the process starts (seen: 264 s), which a tight window rejects.
 registry_matches_process() {
-    local file="$1" pid="$2" started_ms proc_epoch diff
+    local file="$1" pid="$2" recorded live started_ms proc_epoch diff
+    if recorded="$(registry_proc_start "$file")" && [ -n "$recorded" ] &&
+        live="$(live_proc_start "$pid")" && [ -n "$live" ]; then
+        [ "$recorded" = "$live" ]
+        return
+    fi
     started_ms="$(grep -oE '"startedAt" *: *[0-9]+' "$file" | grep -oE '[0-9]+$')"
     proc_epoch="$(start_epoch "$pid")"
     [ -n "$started_ms" ] && [ -n "$proc_epoch" ] || return 1
@@ -49,11 +75,34 @@ session_id() {
     local pid="$1" file="$REGISTRY/$1.json"
     [ -f "$file" ] || return 1
     registry_matches_process "$file" "$pid" || return 1
-    grep -oE '"sessionId" *: *"[0-9a-f-]{36}"' "$file" | grep -oE '[0-9a-f-]{36}'
+    # The file nests a second "sessionId" with the same value; one is enough.
+    grep -oE '"sessionId" *: *"[0-9a-f-]{36}"' "$file" | grep -oE '[0-9a-f-]{36}' | head -n 1
+}
+
+resume_command() {
+    local sid
+    if sid="$(session_id "$1")" && [ -n "$sid" ]; then
+        echo "claude --resume $sid"
+    else
+        # No usable registry entry (process still starting up, or a Claude Code version without the
+        # registry): the newest conversation in the pane's directory is the best guess left.
+        echo "claude --continue"
+    fi
 }
 
 main() {
-    local kids pid args sid
+    local kids pid args
+
+    # A window opened with a command (`tmux new-window 'claude ...'`) runs Claude as the pane's own
+    # process, with no shell under it. Its children are then Claude's MCP servers and tool shells,
+    # so looking only at children saved those instead, and the session never came back.
+    case "$(ps -o args= -p "$PANE_PID")" in
+        claude | "claude "*)
+            resume_command "$PANE_PID"
+            exit 0
+            ;;
+    esac
+
     kids="$(children)"
     [ -n "$kids" ] || exit 0
 
@@ -61,14 +110,7 @@ main() {
     while IFS=$'\t' read -r pid args; do
         case "$args" in
             claude | "claude "*)
-                if sid="$(session_id "$pid")" && [ -n "$sid" ]; then
-                    echo "claude --resume $sid"
-                else
-                    # No usable registry entry (process still starting up, or a Claude Code version
-                    # without the registry): the newest conversation in the pane's directory is the
-                    # best guess left.
-                    echo "claude --continue"
-                fi
+                resume_command "$pid"
                 exit 0
                 ;;
         esac
